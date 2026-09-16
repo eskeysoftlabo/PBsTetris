@@ -104,7 +104,7 @@ function A:Initialize()
   local e=self:Engine()
   if self.solo and e and e.over and self.finishedEngine~=e then self.finishedEngine=e;self.audio:Play("lose") end
   self.match:Tick(dt)
-  if self.ui.scene:IsShowing() and now>=self.drawAt then self.drawAt=now+.033;self.ui:Refresh() end
+  if self.ui.scene:IsShowing() and now>=self.drawAt then self.drawAt=now+(self.ui.wiping and .016 or .033);self.ui:Refresh() end
  end)
  EVENT_MANAGER:RegisterForEvent('PBsTetris',EVENT_CONTROLLER_DISCONNECTED,function() self:Hidden();SCENE_MANAGER:Hide('pbtGame') end)
  EVENT_MANAGER:RegisterForEvent('PBsTetris',EVENT_PLAYER_DEACTIVATED,function() self:Hidden();SCENE_MANAGER:Hide('pbtGame') end)

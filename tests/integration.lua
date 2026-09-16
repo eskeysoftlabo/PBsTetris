@@ -19,7 +19,7 @@ local function setHidden(hidden) for _,f in ipairs(scene.fragments) do if f.cont
 SCENE_MANAGER={Show=function() if not scene.shown then scene.shown=true;setHidden(false);scene.callback(nil,SCENE_SHOWING) end end,Hide=function() if scene.shown then scene.shown=false;setHidden(true);scene.callback(nil,SCENE_HIDING) end end}
 ZO_SimpleSceneFragment={New=function(_,control) return {control=control} end};ZO_ActionLayerFragment={New=function() return {} end};FRAGMENT_GROUP={GAMEPAD_DRIVEN_UI_WINDOW={}}
 ZO_SavedVars={NewAccountWide=function() return {highScore=0,bestLines=0} end}
-GetFrameTimeSeconds=function() return 100 end;GetTimeStamp=function() return 100000 end;GetDisplayName=function() return '@self' end
+local clock=100;GetFrameTimeSeconds=function() return clock end;GetTimeStamp=function() return 100000 end;GetDisplayName=function() return '@self' end
 ZO_PreHook=function() end;ZO_Alert=function() end;SLASH_COMMANDS={}
 EVENT_MANAGER={RegisterForEvent=function() end,UnregisterForEvent=function() end,RegisterForUpdate=function() end}
 PBT.Transport={New=function() return {Allowed=function() return true end,Send=function() return true end} end}
@@ -40,3 +40,17 @@ a:Solo(false,true);assert(a.soloEngine.force20G and a.soloEngine:Grounded());a.s
 a.soloEngine.over=true;a:Action('primary');assert(a.soloEngine.force20G and a.soloEngine:Grounded())
 a:Solo(false,false);assert(not a.soloEngine.force20G and not a.soloEngine:Grounded())
 print('PASS 20G runtime: direct launch, separate record, retry preserves mode, normal mode restore')
+
+a:Solo(true)
+local e=a.soloEngine
+for y=19,22 do for x=1,10 do e.board[y][x]=x==5 and 0 or 8 end end
+e.piece='I';e.rotation=1;e.x=3;e.y=19;e:Drop()
+local bottom=a.ui.cells[20]
+a.ui:Refresh();assert(a.ui.wiping and bottom[1].value==10,'four at once wipes in its own colour')
+clock=clock+.16;a.ui:Refresh();assert(bottom[1].value==0 and bottom[6].value==10,'the row is swept away from the left')
+clock=clock+.2;a.ui:Refresh();assert(not a.ui.wiping and bottom[1].value==0,'the live board comes back once the sweep is over')
+a:Solo(true);e=a.soloEngine;clock=clock+1
+for x=1,10 do e.board[22][x]=x==5 and 0 or 8 end
+e.piece='I';e.rotation=1;e.x=3;e.y=19;e:Drop()
+a.ui:Refresh();assert(a.ui.cells[20][1].value==9,'an ordinary clear wipes white, not gold')
+print('PASS line clear wipe: colours, sweep direction, and handing the board back')

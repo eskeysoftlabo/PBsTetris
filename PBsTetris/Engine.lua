@@ -121,12 +121,23 @@ function E:Lock()
   if p[2]>2 then hidden=false end
  end
  if hidden then self.over=true;return end
- local cleared=0
- for y=22,1,-1 do
+ local rows={}
+ for y=1,22 do
   local full=true;for x=1,10 do if self.board[y][x]==0 then full=false;break end end
-  if full then table.remove(self.board,y);cleared=cleared+1 end
+  if full then rows[#rows+1]=y end
  end
- for _=1,cleared do table.insert(self.board,1,row()) end
+ local cleared=#rows
+ -- The board collapses now, so the drawing side is handed the rows as they stood and where
+ -- they stood. It can wipe them away at its own pace without the engine waiting for it.
+ self.wipe=nil
+ if cleared>0 then
+  local before={}
+  for y=1,22 do local r={};for x=1,10 do r[x]=self.board[y][x] end;before[y]=r end
+  local clearing={};for _,y in ipairs(rows) do clearing[y]=true end
+  self.wipe={board=before,clearing=clearing,quad=cleared==4}
+  for i=cleared,1,-1 do table.remove(self.board,rows[i]) end
+  for _=1,cleared do table.insert(self.board,1,row()) end
+ end
  self.lastClear=cleared
  self:Emit(cleared==4 and "quad" or (cleared>0 and "clear" or "lock"))
  local attack=0

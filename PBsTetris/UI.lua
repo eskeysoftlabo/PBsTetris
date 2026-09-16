@@ -1,6 +1,9 @@
 PBT=PBT or {}
 local U={};U.__index=U;PBT.UI=U
-local colors={{.35,.82,.87},{.94,.8,.35},{.72,.45,.85},{.38,.55,.94},{.94,.57,.3},{.45,.8,.46},{.88,.38,.39},{.52,.53,.55}}
+-- 1-8 are the pieces and garbage. 9 and 10 are a row on its way out: white for an ordinary
+-- clear, gold for four at once, which is the only place either colour is used.
+local colors={{.35,.82,.87},{.94,.8,.35},{.72,.45,.85},{.38,.55,.94},{.94,.57,.3},{.45,.8,.46},{.88,.38,.39},{.52,.53,.55},{1,.97,.9},{1,.84,.35}}
+local WIPE,QUAD_WIPE=.18,.3
 local function box(parent,x,y,w,h)
  local c=WINDOW_MANAGER:CreateControl(nil,parent,CT_BACKDROP);c:SetAnchor(TOPLEFT,parent,TOPLEFT,x,y);c:SetDimensions(w,h)
  c:SetCenterColor(.018,.022,.026,.97);c:SetEdgeColor(.48,.4,.26,1);c:SetEdgeTexture('',1,1,1);return c
@@ -62,11 +65,26 @@ function U:DrawMini(index,name)
  local values={};if name then for _,p in ipairs(PBT.Engine.Cells(name,0,0,0)) do values[p[2]*4+p[1]+1]=PBT.Engine.ids[name] end end
  for i,c in ipairs(self.minis[index]) do paint(c,values[i] or 0) end
 end
+-- Holds the board as it stood when the rows filled up, until the wipe has swept across it.
+-- Returns how far the sweep has got, or nil once the live board should be drawn again.
+function U:Wipe(e)
+ local wipe=e and e.wipe
+ if wipe~=self.wipe then self.wipe=wipe;self.wipeAt=wipe and GetFrameTimeSeconds() end
+ if not wipe then return nil end
+ local progress=(GetFrameTimeSeconds()-self.wipeAt)/(wipe.quad and QUAD_WIPE or WIPE)
+ if progress<0 or progress>=1 then return nil end
+ return wipe,math.floor(progress*10),wipe.quad and 10 or 9
+end
 function U:Refresh()
  local app=self.app;local e=app:Engine();local m=app.match
  self.mode:SetText(app.solo and (e and e:Is20G() and 'ひとりで挑戦 · 20G' or 'ひとりで挑戦 · スコアアタック') or ('対戦相手：'..(m.peer or '未選択')))
- local board=e and e:View()
- for y=1,20 do for x=1,10 do paint(self.cells[y][x],board and board[y+2][x] or 0) end end
+ local wipe,swept,tint=self:Wipe(e);self.wiping=wipe~=nil
+ local board=wipe and wipe.board or (e and e:View())
+ for y=1,20 do for x=1,10 do
+  local value=board and board[y+2][x] or 0
+  if wipe and wipe.clearing[y+2] then value=x<=swept and 0 or tint end
+  paint(self.cells[y][x],value)
+ end end
  self:DrawMini(1,e and e.hold)
  for i=1,3 do self:DrawMini(i+1,e and e.queue[i]) end
  self.stats:SetText(string.format('スコア\n%d\n\n消したライン　%d\nレベル　%d',e and e.score or 0,e and e.lines or 0,e and e.level or 1))
