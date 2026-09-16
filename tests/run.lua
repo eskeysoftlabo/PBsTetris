@@ -35,6 +35,18 @@ test('bounded huge garbage overflows',function() local e=E.New(1);e:AddGarbage(9
 test('spawn obstruction loses',function() local e=E.New(1);for x=1,10 do e.board[1][x]=8;e.board[2][x]=8 end;e:Spawn();assert(e.over) end)
 test('solo gravity accelerates',function() local a,b=E.New(1),E.New(1);b.level=10;for _=1,8 do a:Tick(.1);b:Tick(.1) end;assert(b.y>a.y) end)
 test('pause stops input and timer',function() local e=E.New(1);local y,x,p=e.y,e.x,e.piece;e.paused=true;e:Tick(.1,true);e:Move(1);e:Rotate(1);e:Drop();e:Hold();equal(e.y,y);equal(e.x,x);equal(e.piece,p);equal(e.elapsed,0) end)
+test('soft drop does not cash in the slow fall already due',function()
+ local e=E.New(1);for _=1,8 do e:Tick(.1) end
+ local y=e.y;equal(y,e.y)
+ e:Tick(.1,true)
+ assert(e.y-y<=4,'one soft drop frame moved '..(e.y-y)..' rows, which is a hard drop')
+ assert(e.y>y,'and it still moves')
+end)
+test('a level up does not cash in the fall already due',function()
+ local e=E.New(1);for _=1,8 do e:Tick(.1) end
+ local y=e.y;e.level=10;e:Tick(.1)
+ assert(e.y-y<=2,'one frame after a level up moved '..(e.y-y)..' rows')
+end)
 test('level increases each ten lines',function() local e=setupClear(4);e.lines=8;e:Lock();equal(e.level,2) end)
 test('ghost lies on valid landing',function() local e=E.New(1);local y=e:GhostY();assert(e:Fits(e.x,y,e.rotation));assert(not e:Fits(e.x,y+1,e.rotation)) end)
 local now,queue,players,allowed,drop
@@ -70,11 +82,15 @@ test('simultaneous invites converge',function() network();players.A:Invite('B');
 -- Contracts for the game's actual menu table, including coexistence with another PX child.
 ZO_GamepadEntryData={New=function(_,name,icon) return {SetIconTintOnSelection=function() end,SetIconDisabledTintOnSelection=function() end,SetEnabled=function() end} end}
 dofile('PBsTetris/Menu.lua')
-test('PX inserted after options with idempotent child',function()
- ZO_MENU_ENTRIES={{id=1,data={name='その他'}},{id=2,data={name='設定',scene='gamepad_options_root'}},{id=3,data={name='ログアウト'}}}
- local launched=0;local app={Solo=function() launched=launched+1 end};PBT.EnsureMenu(app);PBT.EnsureMenu(app)
- equal(#ZO_MENU_ENTRIES,4);equal(ZO_MENU_ENTRIES[3].data.name,'ゲームセンターPX');equal(ZO_MENU_ENTRIES[4].id,3);equal(#ZO_MENU_ENTRIES[3].subMenu,2)
- ZO_MENU_ENTRIES[3].subMenu[1].data.activatedCallback();equal(launched,1)
+test('PX sits between help and options with idempotent children',function()
+ ZO_MENU_ENTRIES={{id=1,data={name='ヘルプ',scene='helpRootGamepad'}},{id=2,data={name='設定',scene='gamepad_options_root'}},{id=3,data={name='ログアウト'}}}
+ local launched,forced=0,nil;local app={Solo=function(_,restart,force) launched=launched+1;forced=force end}
+ PBT.EnsureMenu(app);PBT.EnsureMenu(app)
+ equal(#ZO_MENU_ENTRIES,4);equal(ZO_MENU_ENTRIES[4].id,3)
+ equal(ZO_MENU_ENTRIES[1].data.name,'ヘルプ');equal(ZO_MENU_ENTRIES[2].data.name,'ゲームセンターPX');equal(ZO_MENU_ENTRIES[3].data.name,'設定')
+ equal(#ZO_MENU_ENTRIES[2].subMenu,2)
+ ZO_MENU_ENTRIES[2].subMenu[1].data.activatedCallback();equal(launched,1);equal(forced,false)
+ ZO_MENU_ENTRIES[2].subMenu[2].data.activatedCallback();equal(forced,true)
 end)
 test('existing PX games retained',function()
  ZO_MENU_ENTRIES={{id=2,data={scene='gamepad_options_root'}},{id='other',data={name='ゲームセンターPX',subMenu={{name='別のゲーム'}}},subMenu={{id='othergame',data={name='別のゲーム'}}}}}

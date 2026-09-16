@@ -163,6 +163,10 @@ function E:Tick(dt,soft)
  if self:Is20G() then self:Settle20G() else
  local interval=math.max(0.055,0.85*0.8^(self.level-1))
  if soft then interval=math.min(interval,0.035) end
+ -- The timer carries whatever has built up towards the previous, slower interval. Spending
+ -- that at the new one would empty it in a single frame: hold Down a moment before a slow
+ -- fall was due and the piece would cross the whole board at once, exactly like a hard drop.
+ if self.gravity>interval then self.gravity=interval end
  self.gravity=self.gravity+dt
  while self.gravity>=interval do
   self.gravity=self.gravity-interval

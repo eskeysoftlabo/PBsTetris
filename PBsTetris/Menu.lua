@@ -13,7 +13,9 @@ function PBT.EnsureMenu(app)
  if not parent then
   if not index then return end
   parent=entry({name='ゲームセンターPX',icon=icon,customTemplate='ZO_GamepadMenuEntryTemplateWithArrow',subMenu={}},'PBsPX')
-  parent.subMenu={};table.insert(ZO_MENU_ENTRIES,index+1,parent)
+  -- Inserted at the options entry rather than after it, which puts it between help and
+  -- options: those two are adjacent and in that order in the client's own menu table.
+  parent.subMenu={};table.insert(ZO_MENU_ENTRIES,index,parent)
  end
  parent.subMenu=parent.subMenu or {};parent.data.subMenu=parent.data.subMenu or {}
  for _,mode in ipairs({{'PBsTetrisSolo','タムリエル de テトリス',false},{'PBsTetris20G','タムリエル de テトリス（20G）',true}}) do
