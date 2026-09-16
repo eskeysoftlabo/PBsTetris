@@ -54,3 +54,24 @@ for x=1,10 do e.board[22][x]=x==5 and 0 or 8 end
 e.piece='I';e.rotation=1;e.x=3;e.y=19;e:Drop()
 a.ui:Refresh();assert(a.ui.cells[20][1].value==9,'an ordinary clear wipes white, not gold')
 print('PASS line clear wipe: colours, sweep direction, and handing the board back')
+
+local function falling() local n=0;for _,f in ipairs(a.ui.flakes) do if not f.control.hidden then n=n+1 end end;return n end
+a:Solo(true);e=a.soloEngine;clock=clock+1;a.ui:Refresh()
+local calm=falling();assert(calm>0,'a clear board still gets a little snow')
+for y=6,22 do for x=1,10 do e.board[y][x]=8 end end
+clock=clock+1;a.ui:Refresh()
+local heavy=falling();assert(heavy>calm*3,'a stack near the ceiling snows far harder: '..calm..' -> '..heavy)
+local moved=false
+for _,f in ipairs(a.ui.flakes) do local y=f.y;clock=clock+.05;a.ui:Refresh();if f.y and y and f.y~=y then moved=true end end
+assert(moved,'the flakes actually fall')
+for y=6,22 do for x=1,10 do e.board[y][x]=0 end end
+clock=clock+1;a.ui:Refresh();assert(falling()<heavy,'clearing the stack calls the snow off again')
+
+for x=1,9 do e.board[22][x]=8 end
+local lit,plain=false,false
+for _=1,60 do
+ clock=clock+.06;a.ui:Refresh()
+ for x=1,10 do local shine=a.ui.cells[20][x].shine;if shine and shine>0 then lit=true elseif shine==0 then plain=true end end
+end
+assert(lit and plain,'the stack catches a highlight that passes, rather than staying lit')
+print('PASS snow and shine: intensity follows the stack, flakes fall, the glint passes over')
