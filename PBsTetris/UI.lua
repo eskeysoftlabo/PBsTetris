@@ -8,6 +8,7 @@ local FLAKES=48
 -- The highlight crosses the board diagonally over SHINE seconds and then stays away for the
 -- rest of SHINE_CYCLE, so it reads as an occasional glint rather than a strobe.
 local SHINE,SHINE_CYCLE,SHINE_WIDTH=1.5,4.2,.16
+local FADE_IN,FADE_OUT=.28,.34
 local function box(parent,x,y,w,h)
  local c=WINDOW_MANAGER:CreateControl(nil,parent,CT_BACKDROP);c:SetAnchor(TOPLEFT,parent,TOPLEFT,x,y);c:SetDimensions(w,h)
  c:SetCenterColor(.018,.022,.026,.97);c:SetEdgeColor(.48,.4,.26,1);c:SetEdgeTexture('',1,1,1);return c
@@ -53,6 +54,14 @@ function U.New(app)
  self.footer=text(root,45,800,1010,28,18,'方向キー：移動　下：速く落とす　上：一気に落とす　L1：左回転')
  self.overlay=box(root,402,365,296,200);self.overlay:SetDrawLayer(DL_OVERLAY)
  self.message=text(self.overlay,8,15,280,170,27);self.message:SetDrawLayer(DL_OVERLAY);self.message:SetDrawLevel(1)
+ -- A curtain of its own, on the high draw tier, so it covers the gamepad menu the board is
+ -- being opened from as well as the board itself. It outlives the scene deliberately: the
+ -- world has to go dark before the scene is shown at all.
+ local curtain=WINDOW_MANAGER:CreateTopLevelWindow('PBsTetrisCurtain')
+ curtain:SetAnchorFill(GuiRoot);curtain:SetHidden(true);curtain:SetDrawTier(DT_HIGH);curtain:SetDrawLayer(DL_OVERLAY);curtain:SetDrawLevel(9)
+ local black=WINDOW_MANAGER:CreateControl(nil,curtain,CT_BACKDROP)
+ black:SetAnchorFill(curtain);black:SetCenterColor(0,0,0,1);black:SetEdgeColor(0,0,0,0);black:SetEdgeTexture('',1,1,1)
+ self.curtain=curtain
  for i=1,FLAKES do
   local c=WINDOW_MANAGER:CreateControl(nil,self.root,CT_TEXTURE)
   c:SetTexture('PBsTetris/assets/flake.dds');c:SetDrawLayer(DL_OVERLAY);c:SetDrawLevel(2);c:SetHidden(true)
@@ -123,6 +132,32 @@ function U:Shine(now)
  local at=now%SHINE_CYCLE
  if at>SHINE then return nil end
  return -.3+(at/SHINE)*1.6
+end
+-- Darkens the screen, runs `after` at full black, then lifts. Nothing of the board runs in
+-- between: Playable() needs the scene, and the scene is only shown by `after`.
+function U:Fade(after)
+ self.fade={phase='in',elapsed=0,after=after}
+ self.curtain:SetAlpha(0);self.curtain:SetHidden(false)
+end
+function U:CancelFade()
+ if self.fade then self.fade.after=nil end
+end
+function U:Tick(dt)
+ local fade=self.fade
+ if not fade then return end
+ fade.elapsed=fade.elapsed+math.min(.1,math.max(0,dt))
+ if fade.phase=='in' then
+  local alpha=math.min(1,fade.elapsed/FADE_IN);self.curtain:SetAlpha(alpha)
+  if alpha>=1 then
+   local after=fade.after
+   fade.phase,fade.elapsed,fade.after='out',0,nil
+   if after then after() end
+  end
+ else
+  local alpha=1-fade.elapsed/FADE_OUT
+  if alpha<=0 then self.curtain:SetAlpha(0);self.curtain:SetHidden(true);self.fade=nil
+  else self.curtain:SetAlpha(alpha) end
+ end
 end
 function U:Refresh()
  local app=self.app;local e=app:Engine();local m=app.match

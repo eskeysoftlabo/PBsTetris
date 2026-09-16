@@ -1,7 +1,8 @@
 -- Runtime wiring smoke test with explicit ESO API doubles (not an ESO emulator).
 local function control()
  local c={}
- for _,name in ipairs({'SetAnchor','SetAnchorFill','SetDimensions','SetCenterColor','SetEdgeColor','SetEdgeTexture','SetFont','SetHorizontalAlignment','SetColor','SetDrawLayer','SetDrawLevel','SetTexture','SetScale'}) do c[name]=function() end end
+ for _,name in ipairs({'SetAnchor','SetAnchorFill','SetDimensions','SetCenterColor','SetEdgeColor','SetEdgeTexture','SetFont','SetHorizontalAlignment','SetColor','SetDrawLayer','SetDrawLevel','SetDrawTier','SetTexture','SetScale'}) do c[name]=function() end end
+ c.SetAlpha=function(self,v) self.alpha=v end
  c.SetHidden=function(self,v) self.hidden=v end;c.SetText=function(self,v) self.text=v end
  c.GetHeight=function() return 1080 end;c.GetWidth=function() return 1920 end
  return c
@@ -27,21 +28,29 @@ PBT.HookMenus=function() end
 for _,name in ipairs({'Audio','UI','Main'}) do dofile('PBsTetris/'..name..'.lua') end
 local a=PBT.App;a:Initialize();a.match:Tick(0)
 assert(a.ui.root.hidden,'the window starts hidden')
+-- Opening the board goes through the fade, so the tests have to let the curtain fall and lift
+-- exactly as the game's own update loop does.
+local function reveal() for _=1,10 do a.ui:Tick(.1) end end
 a:Solo()
+assert(a.ui.root.hidden and not a.ui.curtain.hidden,'the world goes dark before the board is shown')
+for _=1,3 do a.ui:Tick(.1) end
+assert(a.ui.curtain.alpha==1 and not a.ui.root.hidden,'the board appears at full black')
+for _=1,4 do a.ui:Tick(.1) end
+assert(a.ui.curtain.hidden,'and the curtain lifts off it')
 assert(a.ui.root.hidden==false,'the top level window must be what the scene shows, not a child of it')
 assert(a:Playable());local x=a:Engine().x;a:Input('left',true);assert(a:Engine().x==x-1)
 a:Action('back');assert(a:Engine().paused);a:Action('primary');assert(not a:Engine().paused)
 a:Action('back');a:Action('back');assert(not scene.shown);assert(not a.keys.left)
-a:Solo();assert(a:Playable());a.soloEngine.over=true;a:Action('primary');assert(not a.soloEngine.over)
-a:Challenge('@other');assert(a.match.state=='inviting');SCENE_MANAGER:Hide('pbtGame');assert(a.match.state=='aborted')
+a:Solo();reveal();assert(a:Playable());a.soloEngine.over=true;a:Action('primary');assert(not a.soloEngine.over)
+a:Challenge('@other');reveal();assert(a.match.state=='inviting');SCENE_MANAGER:Hide('pbtGame');assert(a.match.state=='aborted')
 a.match:Reset('@other',333,42,true,'playing');a.match.engine=PBT.Engine.New(42,true);SCENE_MANAGER:Show('pbtGame');a:Action('back');assert(a.match.terminal==2)
 print('PASS runtime wiring: solo, pause, resume, restart, input cleanup, challenge cancellation and surrender')
-a:Solo(false,true);assert(a.soloEngine.force20G and a.soloEngine:Grounded());a.soloEngine.score=123;a:Save();assert(a.saved.highScore20G==123)
+a:Solo(false,true);reveal();assert(a.soloEngine.force20G and a.soloEngine:Grounded());a.soloEngine.score=123;a:Save();assert(a.saved.highScore20G==123)
 a.soloEngine.over=true;a:Action('primary');assert(a.soloEngine.force20G and a.soloEngine:Grounded())
 a:Solo(false,false);assert(not a.soloEngine.force20G and not a.soloEngine:Grounded())
 print('PASS 20G runtime: direct launch, separate record, retry preserves mode, normal mode restore')
 
-a:Solo(true)
+a:Solo(true);reveal()
 local e=a.soloEngine
 for y=19,22 do for x=1,10 do e.board[y][x]=x==5 and 0 or 8 end end
 e.piece='I';e.rotation=1;e.x=3;e.y=19;e:Drop()
@@ -49,14 +58,14 @@ local bottom=a.ui.cells[20]
 a.ui:Refresh();assert(a.ui.wiping and bottom[1].value==10,'four at once wipes in its own colour')
 clock=clock+.16;a.ui:Refresh();assert(bottom[1].value==0 and bottom[6].value==10,'the row is swept away from the left')
 clock=clock+.2;a.ui:Refresh();assert(not a.ui.wiping and bottom[1].value==0,'the live board comes back once the sweep is over')
-a:Solo(true);e=a.soloEngine;clock=clock+1
+a:Solo(true);reveal();e=a.soloEngine;clock=clock+1
 for x=1,10 do e.board[22][x]=x==5 and 0 or 8 end
 e.piece='I';e.rotation=1;e.x=3;e.y=19;e:Drop()
 a.ui:Refresh();assert(a.ui.cells[20][1].value==9,'an ordinary clear wipes white, not gold')
 print('PASS line clear wipe: colours, sweep direction, and handing the board back')
 
 local function falling() local n=0;for _,f in ipairs(a.ui.flakes) do if not f.control.hidden then n=n+1 end end;return n end
-a:Solo(true);e=a.soloEngine;clock=clock+1;a.ui:Refresh()
+a:Solo(true);reveal();e=a.soloEngine;clock=clock+1;a.ui:Refresh()
 local calm=falling();assert(calm>0,'a clear board still gets a little snow')
 for y=6,22 do for x=1,10 do e.board[y][x]=8 end end
 clock=clock+1;a.ui:Refresh()
@@ -75,3 +84,7 @@ for _=1,60 do
 end
 assert(lit and plain,'the stack catches a highlight that passes, rather than staying lit')
 print('PASS snow and shine: intensity follows the stack, flakes fall, the glint passes over')
+
+SCENE_MANAGER:Hide('pbtGame');a:Solo();a.ui:CancelFade();reveal()
+assert(a.ui.curtain.hidden and not scene.shown,'a cancelled fade lifts without ever showing the board')
+print('PASS fade: the screen darkens before the board, and combat can call it off')

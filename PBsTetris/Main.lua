@@ -11,7 +11,8 @@ function A:Solo(restart,force20G)
  self.solo=true
  if force20G==nil then force20G=restart and self.soloEngine and self.soloEngine.force20G or false end
  if restart or not self.soloEngine or self.soloEngine.force20G~=force20G then self:Save();self.soloEngine=PBT.Engine.New(math.random(1,2147483646),false,force20G) end
- self.audio:Bind(self.soloEngine);self.audio:Play("start");self.soloEngine.paused=false;self:ClearKeys();SCENE_MANAGER:Show('pbtGame');self.ui:Refresh()
+ self.audio:Bind(self.soloEngine);self.soloEngine.paused=false;self:ClearKeys()
+ self.ui:Fade(function() self.audio:Play("start");SCENE_MANAGER:Show('pbtGame');self.ui:Refresh() end)
 end
 function A:Challenge(peer)
  if self.match:Active() then self:Alert('進行中の対戦を終了してください。');return end
@@ -19,10 +20,10 @@ function A:Challenge(peer)
  if not self.transport:Allowed(peer) then self:Alert('同じグループの、戦闘中ではない相手を招待してください。');return end
  self:Save();if self.soloEngine then self.soloEngine.paused=true end
  self.solo=false;self:ClearKeys()
- if self.match:Invite(peer) then SCENE_MANAGER:Show('pbtGame') end
+ if self.match:Invite(peer) then self.ui:Fade(function() SCENE_MANAGER:Show('pbtGame') end) end
 end
 function A:Hidden()
- self.audio:Stop()
+ self.ui:CancelFade();self.audio:Stop()
  self:ClearKeys();self:Save()
  if self.soloEngine then self.soloEngine.paused=true end
  if self.match:Active() then self.match:Quit() end
@@ -94,6 +95,7 @@ function A:Initialize()
  self.lastTick=GetFrameTimeSeconds();self.drawAt=0
  EVENT_MANAGER:RegisterForUpdate('PBsTetrisTick',16,function()
   local now=GetFrameTimeSeconds();local dt=math.min(.1,now-self.lastTick);self.lastTick=now
+  self.ui:Tick(dt)
   if self:Playable() then
    local dx=(self.keys.left and -1 or 0)+(self.keys.right and 1 or 0)
    if dx~=0 and now>=self.repeatAt then self:Engine():Move(dx);self.repeatAt=now+.05 end
