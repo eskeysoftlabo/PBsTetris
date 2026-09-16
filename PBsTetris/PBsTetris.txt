@@ -3,7 +3,7 @@
 ## Description: Stone-themed falling-block puzzle with solo score attack and group duels.
 ## Version: 1.2.0
 ## AddOnVersion: 10200
-## APIVersion: 101050
+## APIVersion: 101050 101051
 ## OptionalDependsOn: LibGroupBroadcast
 ## SavedVariables: PBsTetrisSavedVariables
 

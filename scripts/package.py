@@ -9,6 +9,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--check", action="store_true", help="Validate manifests without writing a ZIP")
 args = parser.parse_args()
 
+# Every currently shipping PBs add-on declares both live API versions. Declaring only the
+# older one makes the client mark the add-on out of date and skip loading it entirely, which
+# looks exactly like the add-on doing nothing at all. Bump this line when ESO bumps the API.
+SUPPORTED_API = "101050 101051"
+
 root = Path(__file__).resolve().parents[1]
 addon = root / "PBsTetris"
 ET.parse(addon / "Bindings.xml")
@@ -42,6 +47,9 @@ for suffix in (".addon", ".txt"):
 assert manifests[0][0] == manifests[1][0], "Manifest load orders differ"
 for key in ("Version", "AddOnVersion", "APIVersion", "OptionalDependsOn", "SavedVariables"):
     assert manifests[0][1].get(key) == manifests[1][1].get(key), f"Manifest {key} differs"
+declared = manifests[0][1].get("APIVersion")
+if declared != SUPPORTED_API:
+    raise SystemExit(f"APIVersion is {declared!r}, expected {SUPPORTED_API!r}: a manifest that omits the live API version is skipped by the client as out of date")
 if args.check:
     print("Both manifests validated, including all DDS entries.")
     raise SystemExit(0)
@@ -50,6 +58,6 @@ output = root / f"dist/PBsTetris-{version}.zip"
 output.parent.mkdir(exist_ok=True)
 with ZipFile(output, "w", ZIP_DEFLATED) as archive:
     for file in sorted(addon.rglob("*")):
-        if file.is_file() and not any(part.startswith(".") for part in file.relative_to(addon).parts):
+        if file.is_file() and file.suffix.lower() != ".md" and not any(part.startswith(".") for part in file.relative_to(addon).parts):
             archive.write(file, file.relative_to(root))
 print(output)
