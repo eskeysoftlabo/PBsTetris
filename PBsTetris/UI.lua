@@ -45,7 +45,7 @@ function U.New(app)
   self.keybinds[#self.keybinds+1]={keybind=entry[1],name=function() return app:ActionName(action) end,callback=function() app:Action(action) end}
  end
  self.scene=ZO_Scene:New('pbtGame',SCENE_MANAGER)
- self.scene:AddFragment(ZO_SimpleSceneFragment:New(root));self.scene:AddFragmentGroup(FRAGMENT_GROUP.GAMEPAD_DRIVEN_UI_WINDOW)
+ self.scene:AddFragment(ZO_SimpleSceneFragment:New(self.root));self.scene:AddFragmentGroup(FRAGMENT_GROUP.GAMEPAD_DRIVEN_UI_WINDOW)
  self.scene:AddFragment(ZO_ActionLayerFragment:New('PBsTetrisInput'))
  self.scene:RegisterCallback('StateChange',function(_,state)
   if state==SCENE_SHOWING then

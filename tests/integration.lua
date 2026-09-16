@@ -10,10 +10,14 @@ WINDOW_MANAGER={CreateControl=function() return control() end,CreateTopLevelWind
 KEYBIND_STRIP={AddKeybindButtonGroup=function() end,RemoveKeybindButtonGroup=function() end,UpdateKeybindButtonGroup=function() end}
 SCENE_SHOWING='showing';SCENE_HIDING='hiding';local scene
 ZO_Scene={New=function()
- scene={shown=false,AddFragment=function() end,AddFragmentGroup=function() end,RegisterCallback=function(self,_,f) self.callback=f end,IsShowing=function(self) return self.shown end};return scene
+ scene={shown=false,fragments={},AddFragment=function(self,f) self.fragments[#self.fragments+1]=f end,AddFragmentGroup=function() end,RegisterCallback=function(self,_,f) self.callback=f end,IsShowing=function(self) return self.shown end};return scene
 end}
-SCENE_MANAGER={Show=function() if not scene.shown then scene.shown=true;scene.callback(nil,SCENE_SHOWING) end end,Hide=function() if scene.shown then scene.shown=false;scene.callback(nil,SCENE_HIDING) end end}
-ZO_SimpleSceneFragment={New=function() return {} end};ZO_ActionLayerFragment={New=function() return {} end};FRAGMENT_GROUP={GAMEPAD_DRIVEN_UI_WINDOW={}}
+-- A simple scene fragment shows and hides the control it was built from, which is the whole
+-- reason the game window appears at all. The double does the same, so that handing the
+-- fragment the wrong control fails here rather than in front of a player.
+local function setHidden(hidden) for _,f in ipairs(scene.fragments) do if f.control then f.control:SetHidden(hidden) end end end
+SCENE_MANAGER={Show=function() if not scene.shown then scene.shown=true;setHidden(false);scene.callback(nil,SCENE_SHOWING) end end,Hide=function() if scene.shown then scene.shown=false;setHidden(true);scene.callback(nil,SCENE_HIDING) end end}
+ZO_SimpleSceneFragment={New=function(_,control) return {control=control} end};ZO_ActionLayerFragment={New=function() return {} end};FRAGMENT_GROUP={GAMEPAD_DRIVEN_UI_WINDOW={}}
 ZO_SavedVars={NewAccountWide=function() return {highScore=0,bestLines=0} end}
 GetFrameTimeSeconds=function() return 100 end;GetTimeStamp=function() return 100000 end;GetDisplayName=function() return '@self' end
 ZO_PreHook=function() end;ZO_Alert=function() end;SLASH_COMMANDS={}
@@ -21,7 +25,10 @@ EVENT_MANAGER={RegisterForEvent=function() end,UnregisterForEvent=function() end
 PBT.Transport={New=function() return {Allowed=function() return true end,Send=function() return true end} end}
 PBT.HookMenus=function() end
 for _,name in ipairs({'Audio','UI','Main'}) do dofile('PBsTetris/'..name..'.lua') end
-local a=PBT.App;a:Initialize();a.match:Tick(0);a:Solo()
+local a=PBT.App;a:Initialize();a.match:Tick(0)
+assert(a.ui.root.hidden,'the window starts hidden')
+a:Solo()
+assert(a.ui.root.hidden==false,'the top level window must be what the scene shows, not a child of it')
 assert(a:Playable());local x=a:Engine().x;a:Input('left',true);assert(a:Engine().x==x-1)
 a:Action('back');assert(a:Engine().paused);a:Action('primary');assert(not a:Engine().paused)
 a:Action('back');a:Action('back');assert(not scene.shown);assert(not a.keys.left)
