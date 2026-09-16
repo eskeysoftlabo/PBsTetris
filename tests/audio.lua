@@ -5,7 +5,8 @@ SOUNDS={DEFAULT_CLICK='click',LOCKPICKING_CHAMBER_START='rotate',LOCKPICKING_CHA
 PlaySound=function(id) played[#played+1]=id end
 GetOverrideMusicMode=function() return current end
 SetOverrideMusicMode=function(mode) current=mode end
-OVERRIDE_MUSIC_MODE_TRIBUTE,OVERRIDE_MUSIC_MODE_CHAMPION,OVERRIDE_MUSIC_MODE_DUELING,OVERRIDE_MUSIC_MODE_CREDITS=3,4,5,6
+local constants={OVERRIDE_MUSIC_MODE_TRIBUTE=3,OVERRIDE_MUSIC_MODE_CHAMPION=4,OVERRIDE_MUSIC_MODE_DUELING=5,OVERRIDE_MUSIC_MODE_CREDITS=6}
+setmetatable(_G,{__index=function(_,key) return constants[key] end})
 local saved={soundEnabled=true};local audio=PBT.Audio.New(saved)
 audio:Sync(true);assert(current==3,'default mode is Tribute');audio:Sync(true);audio:Stop();assert(current==17)
 audio:Sync(true);current=99;audio:Stop();assert(current==99,'must not overwrite another addon or game override')
@@ -20,9 +21,13 @@ audio:Sync(true);assert(current==42,'stays yielded instead of fighting')
 audio:Stop();audio:Sync(true);assert(current==4,'a fresh session takes the override again')
 saved.musicMode='nonsense';audio:Sync(true);assert(current==3,'unknown saved mode falls back to the default')
 audio:Sync(false);assert(current==42,'leaving play restores the override from before the game started')
+saved.musicMode='dueling';audio:Sync(true)
+assert(audio:Report():find('要求 5') and audio:Report():find('現在 5') and audio:Report():find('所有 あり'),'the report names the id actually asked for: '..audio:Report())
+audio:Stop()
 audio:Play('move');audio:Play('move');assert(#played==1);clock=11;audio:Play('move');assert(#played==2)
 saved.soundEnabled=false;audio:Play('rotate');assert(#played==2)
 saved.soundEnabled=true;local e=PBT.Engine.New(2);audio:Bind(e);e:Drop();assert(played[#played]=='lock')
 local last=#played;e.over=true;e:Move(1);assert(#played==last)
 SOUNDS={};clock=12;audio:Play('rotate');assert(#played==last,'unknown built-in sound should be ignored')
 print('PASS audio: music modes, cycling, restoration, ownership, toggles, throttling, engine events, unknown IDs')
+setmetatable(_G,nil)

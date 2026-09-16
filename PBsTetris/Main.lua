@@ -89,7 +89,7 @@ function A:Initialize()
   if arg=='20g' then self:Solo(false,true)
   elseif arg=='music' then self:Alert(self.audio:Cycle(self:Playable()))
   elseif arg=='sound' then self.saved.soundEnabled=not self.saved.soundEnabled;self:Alert(self.saved.soundEnabled and '効果音：入' or '効果音：切')
-  elseif arg=='debug' then d(self.transport.detail or self.transport.error or '通信初期化済み・開発用ID 510') else self:Solo() end
+  elseif arg=='debug' then d(self.transport.detail or self.transport.error or '通信初期化済み・開発用ID 510');d(self.audio:Report()) else self:Solo() end
  end
  self.lastTick=GetFrameTimeSeconds();self.drawAt=0
  EVENT_MANAGER:RegisterForUpdate('PBsTetrisTick',16,function()

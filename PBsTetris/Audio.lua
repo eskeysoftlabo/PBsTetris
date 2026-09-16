@@ -1,7 +1,17 @@
 PBT=PBT or {}
 local Audio={};Audio.__index=Audio;PBT.Audio=Audio
 local ids={move='DEFAULT_CLICK',rotate='LOCKPICKING_CHAMBER_START',hold='ENCHANTING_POTENCY_RUNE_PLACED',lock='LOCKPICKING_CHAMBER_LOCKED',clear='SCRYING_CAPTURE_HEX_LARGE',quad='SCRYING_CAPTURE_GOAL',start='DUEL_START',win='DUEL_WON',lose='DUEL_FORFEIT'}
-local modes={{key='off',label='BGM：切'},{key='tribute',label='BGM：カード',global='OVERRIDE_MUSIC_MODE_TRIBUTE'},{key='champion',label='BGM：星座',global='OVERRIDE_MUSIC_MODE_CHAMPION'},{key='dueling',label='BGM：決闘',global='OVERRIDE_MUSIC_MODE_DUELING'},{key='credits',label='BGM：終幕',global='OVERRIDE_MUSIC_MODE_CREDITS'}}
+local modes={{key='off',label='BGM：切'},{key='tribute',label='BGM：カード'},{key='champion',label='BGM：星座'},{key='dueling',label='BGM：決闘'},{key='credits',label='BGM：終幕'}}
+-- Named outright rather than looked up in _G: the client's constants are not necessarily raw
+-- entries in the global table, and a lookup that misses turns into silence with nothing to
+-- show for it. Resolved once, on first use, so the client has certainly finished loading.
+local overrides
+local function override(key)
+ if not overrides then
+  overrides={tribute=OVERRIDE_MUSIC_MODE_TRIBUTE,champion=OVERRIDE_MUSIC_MODE_CHAMPION,dueling=OVERRIDE_MUSIC_MODE_DUELING,credits=OVERRIDE_MUSIC_MODE_CREDITS}
+ end
+ return overrides[key]
+end
 local order={};for i,mode in ipairs(modes) do order[mode.key]=i end
 Audio.Modes=modes
 function Audio.New(saved) return setmetatable({saved=saved,last={}},Audio) end
@@ -9,6 +19,13 @@ function Audio:Index() return order[self.saved.musicMode] or order.tribute end
 function Audio:Label() return modes[self:Index()].label end
 function Audio:Cycle(active)
  self.saved.musicMode=modes[self:Index()%#modes+1].key;self.yielded=nil;self:Sync(active);return self:Label()
+end
+-- Reported by /pbt debug: on a console there is no other way to see whether the override was
+-- asked for, whether the client took it, and who holds it.
+function Audio:Report()
+ local key=modes[self:Index()].key
+ return string.format('%s / 設定 %s / 要求 %s / 現在 %s / 所有 %s',self:Label(),key,tostring(override(key)),
+  tostring(GetOverrideMusicMode and GetOverrideMusicMode()),self.owned and 'あり' or (self.yielded and '譲渡' or 'なし'))
 end
 function Audio:Play(kind)
  if self.saved.soundEnabled==false then return end
@@ -21,8 +38,7 @@ function Audio:Bind(engine)
  if engine then engine.onEvent=function(kind) self:Play(kind) end end
 end
 function Audio:Sync(active)
- local name=active and modes[self:Index()].global
- local want=name and rawget(_G,name)
+ local want=active and override(modes[self:Index()].key)
  if not want then self:Stop();return end
  if not (GetOverrideMusicMode and SetOverrideMusicMode) then return end
  if self.owned then
