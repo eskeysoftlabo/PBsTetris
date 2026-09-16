@@ -8,7 +8,12 @@ local FLAKES=48
 -- The highlight crosses the board diagonally over SHINE seconds and then stays away for the
 -- rest of SHINE_CYCLE, so it reads as an occasional glint rather than a strobe.
 local SHINE,SHINE_CYCLE,SHINE_WIDTH=1.5,4.2,.16
-local FADE_IN,FADE_OUT=.28,.34
+-- HOLD_MIN is a floor, not the wait itself: the curtain stays down until the scene reports
+-- SCENE_SHOWN. SCENE_MANAGER:Show hides the menu first and brings the board up over the
+-- following frames, and IsShowing() is already true while that is still happening, so lifting
+-- on either of those shows the world through the gap. HOLD_MAX is there so a scene that never
+-- reports itself shown cannot leave the screen black.
+local FADE_IN,FADE_OUT,HOLD_MIN,HOLD_MAX=.28,.34,.1,1.2
 local function box(parent,x,y,w,h)
  local c=WINDOW_MANAGER:CreateControl(nil,parent,CT_BACKDROP);c:SetAnchor(TOPLEFT,parent,TOPLEFT,x,y);c:SetDimensions(w,h)
  c:SetCenterColor(.018,.022,.026,.97);c:SetEdgeColor(.48,.4,.26,1);c:SetEdgeTexture('',1,1,1);return c
@@ -78,7 +83,8 @@ function U.New(app)
  self.scene:RegisterCallback('StateChange',function(_,state)
   if state==SCENE_SHOWING then
    self.content:SetScale(math.min((GuiRoot:GetHeight()-100)/850,(GuiRoot:GetWidth()-80)/1100));self:Refresh();KEYBIND_STRIP:AddKeybindButtonGroup(self.keybinds)
-  elseif state==SCENE_HIDING then KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybinds);app:Hidden() end
+  elseif state==SCENE_SHOWN then self.sceneShown=true
+  elseif state==SCENE_HIDING then self.sceneShown=false;KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybinds);app:Hidden() end
  end)
  return self
 end
@@ -150,9 +156,11 @@ function U:Tick(dt)
   local alpha=math.min(1,fade.elapsed/FADE_IN);self.curtain:SetAlpha(alpha)
   if alpha>=1 then
    local after=fade.after
-   fade.phase,fade.elapsed,fade.after='out',0,nil
-   if after then after() end
+   fade.phase,fade.elapsed,fade.after=after and 'hold' or 'out',0,nil
+   if after then self.sceneShown=false;after() end
   end
+ elseif fade.phase=='hold' then
+  if (self.sceneShown and fade.elapsed>=HOLD_MIN) or fade.elapsed>=HOLD_MAX then fade.phase,fade.elapsed='out',0 end
  else
   local alpha=1-fade.elapsed/FADE_OUT
   if alpha<=0 then self.curtain:SetAlpha(0);self.curtain:SetHidden(true);self.fade=nil

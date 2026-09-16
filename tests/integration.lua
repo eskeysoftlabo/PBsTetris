@@ -9,7 +9,7 @@ local function control()
 end
 WINDOW_MANAGER={CreateControl=function() return control() end,CreateTopLevelWindow=function() return control() end};GuiRoot=control()
 KEYBIND_STRIP={AddKeybindButtonGroup=function() end,RemoveKeybindButtonGroup=function() end,UpdateKeybindButtonGroup=function() end}
-SCENE_SHOWING='showing';SCENE_HIDING='hiding';local scene
+SCENE_SHOWING='showing';SCENE_SHOWN='shown';SCENE_HIDING='hiding';local scene
 ZO_Scene={New=function()
  scene={shown=false,fragments={},AddFragment=function(self,f) self.fragments[#self.fragments+1]=f end,AddFragmentGroup=function() end,RegisterCallback=function(self,_,f) self.callback=f end,IsShowing=function(self) return self.shown end};return scene
 end}
@@ -17,7 +17,10 @@ end}
 -- reason the game window appears at all. The double does the same, so that handing the
 -- fragment the wrong control fails here rather than in front of a player.
 local function setHidden(hidden) for _,f in ipairs(scene.fragments) do if f.control then f.control:SetHidden(hidden) end end end
-SCENE_MANAGER={Show=function() if not scene.shown then scene.shown=true;setHidden(false);scene.callback(nil,SCENE_SHOWING) end end,Hide=function() if scene.shown then scene.shown=false;setHidden(true);scene.callback(nil,SCENE_HIDING) end end}
+-- Show only starts the transition. The scene reports itself SHOWN once the frames it takes
+-- have passed, which is what Settle stands in for.
+SCENE_MANAGER={Show=function() if not scene.shown then scene.shown=true;setHidden(false);scene.callback(nil,SCENE_SHOWING) end end,
+ Settle=function() if scene.shown then scene.callback(nil,SCENE_SHOWN) end end,Hide=function() if scene.shown then scene.shown=false;setHidden(true);scene.callback(nil,SCENE_HIDING) end end}
 ZO_SimpleSceneFragment={New=function(_,control) return {control=control} end};ZO_ActionLayerFragment={New=function() return {} end};FRAGMENT_GROUP={GAMEPAD_DRIVEN_UI_WINDOW={}}
 ZO_SavedVars={NewAccountWide=function() return {highScore=0,bestLines=0} end}
 local clock=100;GetFrameTimeSeconds=function() return clock end;GetTimeStamp=function() return 100000 end;GetDisplayName=function() return '@self' end
@@ -30,13 +33,16 @@ local a=PBT.App;a:Initialize();a.match:Tick(0)
 assert(a.ui.root.hidden,'the window starts hidden')
 -- Opening the board goes through the fade, so the tests have to let the curtain fall and lift
 -- exactly as the game's own update loop does.
-local function reveal() for _=1,10 do a.ui:Tick(.1) end end
+local function reveal() for i=1,16 do a.ui:Tick(.1);if i==4 then SCENE_MANAGER.Settle() end end end
 a:Solo()
 assert(a.ui.root.hidden and not a.ui.curtain.hidden,'the world goes dark before the board is shown')
 for _=1,3 do a.ui:Tick(.1) end
 assert(a.ui.curtain.alpha==1 and not a.ui.root.hidden,'the board appears at full black')
-for _=1,4 do a.ui:Tick(.1) end
-assert(a.ui.curtain.hidden,'and the curtain lifts off it')
+for _=1,6 do a.ui:Tick(.1) end
+assert(a.ui.curtain.alpha==1,'the curtain waits for the scene rather than the clock')
+SCENE_MANAGER.Settle()
+for _=1,6 do a.ui:Tick(.1) end
+assert(a.ui.curtain.hidden,'and lifts once the board reports itself shown')
 assert(a.ui.root.hidden==false,'the top level window must be what the scene shows, not a child of it')
 assert(a:Playable());local x=a:Engine().x;a:Input('left',true);assert(a:Engine().x==x-1)
 a:Action('back');assert(a:Engine().paused);a:Action('primary');assert(not a:Engine().paused)
@@ -87,4 +93,7 @@ print('PASS snow and shine: intensity follows the stack, flakes fall, the glint 
 
 SCENE_MANAGER:Hide('pbtGame');a:Solo();a.ui:CancelFade();reveal()
 assert(a.ui.curtain.hidden and not scene.shown,'a cancelled fade lifts without ever showing the board')
-print('PASS fade: the screen darkens before the board, and combat can call it off')
+a.ui:Fade(function() end)
+for _=1,20 do a.ui:Tick(.1) end
+assert(a.ui.curtain.hidden,'a scene that never reports itself shown cannot leave the screen black')
+print('PASS fade: the screen darkens before the board, waits for it, and combat can call it off')
