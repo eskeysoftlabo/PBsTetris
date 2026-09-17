@@ -1,5 +1,8 @@
 PBT=PBT or {}
-local T={ID=510};T.__index=T;PBT.Transport=T
+-- BUILD must equal ## AddOnVersion in both manifests; package.py refuses to build otherwise.
+-- It rides on the wire so that two players on different versions are told so, instead of each
+-- silently discarding the other's packets as unreadable.
+local T={ID=510,BUILD=11000};T.__index=T;PBT.Transport=T
 -- Development ID, distinct from PBsJanken's 511. Reserve before public release.
 -- attack, height and terminal ride in one word rather than three narrow fields of their own.
 function T.Pack(packet) return (packet.attack or 0)*128+(packet.height or 0)*4+(packet.terminal or 0) end
@@ -48,7 +51,10 @@ function T.New(receive,refused)
   -- Laid out like PBsJanken's, which is the shape known to work on console: two bits of
   -- version, three of kind, and everything else a full 32 bit word. The odd widths this used
   -- to declare (31, 16, 5, 2) are the only thing that differed from it at the wire level.
+  -- version and build come first and keep their widths forever. Whatever changes behind them,
+  -- a client on another version can still read these two and say so.
   p:AddField(LibGroupBroadcast.CreateNumericField("version",{numBits=2}))
+  p:AddField(LibGroupBroadcast.CreateNumericField("build",{numBits=32}))
   p:AddField(LibGroupBroadcast.CreateNumericField("kind",{numBits=3}))
   for _,key in ipairs({"target1","target2","session","seed","startAt","packed"}) do
    p:AddField(LibGroupBroadcast.CreateNumericField(key,{numBits=32}))
@@ -64,19 +70,26 @@ function T.New(receive,refused)
   end
   self.Own=own
   p:OnData(function(tag,data)
+   -- The library hands a sender its own broadcasts back. Dropped without a word, as PBsJanken
+   -- drops it: it is not a failure and saying so would bury the failures that matter.
+   local peer=GetUnitDisplayName(tag)
+   if not peer or peer=="" or peer==GetDisplayName() then return end
    self.heard=(self.heard or 0)+1
+   if data.build~=T.BUILD then
+    self.mismatched=(self.mismatched or 0)+1
+    self.why=string.format("相手のバージョンが違います（相手 %s / 自分 %d）",tostring(data.build),T.BUILD)
+    if refused then refused(self.why) end
+    return
+   end
    local mine1,mine2=own()
    if data.version~=2 or data.target1~=mine1 or data.target2~=mine2 then
     self.misaddressed=(self.misaddressed or 0)+1
-    self.why=string.format("自分宛ではありませんでした（版 %s / 宛先 %s,%s / 自分 %s,%s）",
-     tostring(data.version),tostring(data.target1),tostring(data.target2),tostring(mine1),tostring(mine2))
-    -- Reported rather than dropped quietly: an address that never matches looks exactly like
-    -- an invite that was never sent, and that is the one thing that must not be invisible.
+    self.why=string.format("自分宛ではありませんでした（宛先 %s,%s / 自分 %s,%s）",
+     tostring(data.target1),tostring(data.target2),tostring(mine1),tostring(mine2))
     if refused then refused(self.why) end
     return
    end
    T.Unpack(data.packed or 0,data)
-   local peer=GetUnitDisplayName(tag)
    local ok,why=self:Check(peer,false)
    if not ok then
     self.refused=(self.refused or 0)+1;self.why="受信を弾きました："..why
@@ -95,7 +108,7 @@ function T:Send(peer,packet)
  if not self.protocol:IsEnabled() then self.why="LibGroupBroadcastでこのアドオンの通信が無効になっています";return false end
  local ok,why=self:Check(peer,true)
  if not ok then self.why="送信できません："..why;return false end
- local p={version=2,kind=packet.kind,session=packet.session,seed=packet.seed,startAt=packet.startAt,packed=T.Pack(packet)}
+ local p={version=2,build=T.BUILD,kind=packet.kind,session=packet.session,seed=packet.seed,startAt=packet.startAt,packed=T.Pack(packet)}
  p.target1,p.target2=T.Identity(peer)
  if self.protocol:Send(p,{replaceQueuedMessages=false})~=true then self.why="LibGroupBroadcastが送信を受け付けませんでした";return false end
  self.why=nil;self.sent=(self.sent or 0)+1;return true
@@ -103,9 +116,9 @@ end
 function T:Report()
  if self.error then return (self.detail or self.error) end
  local mine1,mine2=self.Own and self.Own()
- return string.format('通信ID %d / 有効 %s / グループ %d人 / 自分 %s(%s,%s) / 送信 %d / 受信 %d（自分宛でない %d・拒否 %d・採用 %d）%s',
-  T.ID,tostring(self.protocol and self.protocol:IsEnabled()),GetGroupSize() or 0,
+ return string.format('通信ID %d / 版 %d / 有効 %s / グループ %d人 / 自分 %s(%s,%s) / 送信 %d / 受信 %d（版違い %d・自分宛でない %d・拒否 %d・採用 %d）%s',
+  T.ID,T.BUILD,tostring(self.protocol and self.protocol:IsEnabled()),GetGroupSize() or 0,
   tostring(GetDisplayName()),tostring(mine1),tostring(mine2),
-  self.sent or 0,self.heard or 0,self.misaddressed or 0,self.refused or 0,self.taken or 0,
+  self.sent or 0,self.heard or 0,self.mismatched or 0,self.misaddressed or 0,self.refused or 0,self.taken or 0,
   self.why and (' / 直近の失敗：'..self.why) or '')
 end
