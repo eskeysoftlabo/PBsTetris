@@ -52,7 +52,11 @@ function M:Resolve()
  self:Notify()
 end
 function M:Receive(sender,p)
- if sender==self.o.name or not self.o.allowed(sender) or type(p)~="table" then return end
+ -- Incoming packets are vetted with allowedFrom, which does not repeat the checks that decide
+ -- whether this player may open a duel. Refusing what has already arrived on those grounds is
+ -- how a duel ends up silently one-sided.
+ local allowed=self.o.allowedFrom or self.o.allowed
+ if sender==self.o.name or not allowed(sender) or type(p)~="table" then return end
  for key,max in pairs({kind=6,session=4294967295,seed=2147483647,startAt=4294967295,attack=65535,height=22,terminal=2}) do
   if not uint(p[key],max) then return end
  end

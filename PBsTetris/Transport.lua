@@ -4,17 +4,33 @@ local T={ID=510};T.__index=T;PBT.Transport=T
 function T.Identity(name)
  local h=PBT.SHA256(name);return tonumber(h:sub(1,8),16),tonumber(h:sub(9,16),16)
 end
-function T:Allowed(peer)
+function T:Find(peer)
  for i=1,GetGroupSize() do
   local tag=GetGroupUnitTagByIndex(i)
-  if GetUnitDisplayName(tag)==peer then
-   return peer~=GetDisplayName() and IsUnitOnline(tag) and not IsIgnored(peer)
-    and CanCommunicateWith(GetUnitName(tag)) and not IsUnitInCombat("player") and not IsUnitInCombat(tag)
-  end
+  if GetUnitDisplayName(tag)==peer then return tag end
  end
- return false
 end
-function T.New(receive)
+-- Every refusal comes back with the reason it was refused. A duel that does not start is
+-- otherwise indistinguishable from one that was never invited.
+function T:Check(peer,outgoing)
+ if not peer or peer=="" then return false,"送信者の表示名を取得できません" end
+ if peer==GetDisplayName() then return false,"自分自身宛です" end
+ local tag=self:Find(peer)
+ if not tag then return false,"相手が同じグループにいません" end
+ if not IsUnitOnline(tag) then return false,"相手がオフラインです" end
+ if IsIgnored(peer) then return false,"相手を無視リストに入れています" end
+ if IsUnitInCombat("player") then return false,"自分が戦闘中です" end
+ if IsUnitInCombat(tag) then return false,"相手が戦闘中です" end
+ -- The platform's communication permission decides what this add-on sends out. It is not
+ -- asked again about what arrives: the library only delivers from inside the player's own
+ -- group, the payload is game state rather than anything a player wrote, and a permission
+ -- that answers differently on each end would drop every packet with nothing to show for it.
+ if outgoing and not CanCommunicateWith(GetUnitName(tag)) then return false,"この相手との通信が許可されていません" end
+ return true
+end
+function T:Allowed(peer) local ok=self:Check(peer,true);return ok end
+function T:AllowedFrom(peer) local ok=self:Check(peer,false);return ok end
+function T.New(receive,refused)
  local self=setmetatable({},T)
  if not LibGroupBroadcast then self.error="対戦にはLibGroupBroadcastが必要です。";return self end
  local ok,err=pcall(function()
@@ -41,7 +57,12 @@ function T.New(receive)
    local mine1,mine2=own()
    if data.version~=2 or data.target1~=mine1 or data.target2~=mine2 then self.misaddressed=(self.misaddressed or 0)+1;return end
    local peer=GetUnitDisplayName(tag)
-   if not self:Allowed(peer) then self.refused=(self.refused or 0)+1;return end
+   local ok,why=self:Check(peer,false)
+   if not ok then
+    self.refused=(self.refused or 0)+1;self.why="受信を弾きました："..why
+    if refused then refused(why) end
+    return
+   end
    self.taken=(self.taken or 0)+1;receive(peer,data)
   end)
   assert(p:Finalize({isRelevantInCombat=false,replaceQueuedMessages=false}))
@@ -52,7 +73,8 @@ end
 function T:Send(peer,packet)
  if not self.protocol then self.why="通信が初期化されていません";return false end
  if not self.protocol:IsEnabled() then self.why="LibGroupBroadcastでこのアドオンの通信が無効になっています";return false end
- if not self:Allowed(peer) then self.why="相手に送れる状態ではありません（グループ・オンライン・戦闘中を確認）";return false end
+ local ok,why=self:Check(peer,true)
+ if not ok then self.why="送信できません："..why;return false end
  local p={version=2};for k,v in pairs(packet) do p[k]=v end
  p.target1,p.target2=T.Identity(peer)
  if self.protocol:Send(p,{replaceQueuedMessages=false})~=true then self.why="LibGroupBroadcastが送信を受け付けませんでした";return false end

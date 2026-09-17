@@ -83,6 +83,18 @@ test('disconnect aborts without assigning winner',function() start();drop=true;a
 test('group loss aborts',function() start();allowed=false;advance(1);equal(players.A.state,'aborted') end)
 test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(31);equal(players.A.state,'aborted') end)
 test('start acknowledgement loss cannot start guest alone',function() network();players.A:Invite('B');flush();drop=true;players.B:Accept();advance(31);assert(players.A.state~='playing');assert(players.B.state~='playing') end)
+test('what may arrive is judged separately from what may be sent',function()
+ network()
+ -- B may be invited by nobody, but an invite that has already arrived is still accepted.
+ players.B.o.allowed=function() return false end
+ players.B.o.allowedFrom=function() return true end
+ players.A:Invite('B');flush()
+ equal(players.B.state,'invited')
+ players.B.o.allowedFrom=function() return false end
+ network();players.B.o.allowed=function() return true end;players.B.o.allowedFrom=function() return false end
+ players.A:Invite('B');flush()
+ equal(players.B.state,'idle')
+end)
 test('a refused invite says why instead of vanishing',function()
  network();allowed=true
  players.A.o.send=function() return false end
