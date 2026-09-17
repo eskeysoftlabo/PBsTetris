@@ -182,6 +182,29 @@ test('the protocol id is one nothing else in the family claims',function()
  assert(id~=510,"510 belongs to PB's Translate")
  assert(id~=511,"511 belongs to PB's Janken")
 end)
+test('queued packets are superseded rather than stacked up',function()
+ local finalized,sent
+ LibGroupBroadcast={CreateNumericField=function() return {} end,
+  RegisterHandler=function()
+   return {SetDisplayName=function() end,SetDescription=function() end,DeclareProtocol=function()
+    return {SetDisplayName=function() end,AddField=function() end,OnData=function() end,
+     IsEnabled=function() return true end,
+     Finalize=function(_,options) finalized=options;return true end,
+     Send=function(_,_,options) sent=options;return true end}
+   end}
+  end}
+ dofile('PBsTetris/Transport.lua')
+ local transport=PBT.Transport.New(function() end)
+ equal(transport.error,nil)
+ assert(finalized.replaceQueuedMessages,'the protocol asks for it')
+ GetGroupSize=function() return 2 end;GetGroupUnitTagByIndex=function() return 'group2' end
+ GetUnitDisplayName=function() return '@peer' end;GetDisplayName=function() return '@self' end
+ IsUnitOnline=function() return true end;IsIgnored=function() return false end
+ IsUnitInCombat=function() return false end;GetUnitName=function() return 'Peer' end
+ CanCommunicateWith=function() return true end
+ assert(transport:Send('@peer',{kind=1,session=1,seed=1,startAt=0}),'the send went through')
+ assert(sent.replaceQueuedMessages,'and every packet asks for it too')
+end)
 test('a protocol id already in use is named as such',function()
  local taken=stubLibrary("Protocol with ID 509 already exists with name 'SomeOtherAddon'.")
  assert(taken.error:find('すでに使用'),'the report says the id is taken: '..taken.error)

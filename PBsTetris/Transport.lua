@@ -5,7 +5,7 @@ PBT=PBT or {}
 -- BUILD must equal ## AddOnVersion in both manifests; package.py refuses to build otherwise.
 -- It rides on the wire so that two players on different versions are told so, instead of each
 -- silently discarding the other's packets as unreadable.
-local T={ID=509,BUILD=11200};T.__index=T;PBT.Transport=T
+local T={ID=509,BUILD=11201};T.__index=T;PBT.Transport=T
 -- Development ID, distinct from PBsJanken's 511. Reserve before public release.
 -- attack, height and terminal ride in one word rather than three narrow fields of their own.
 function T.Pack(packet) return (packet.attack or 0)*128+(packet.height or 0)*4+(packet.terminal or 0) end
@@ -101,7 +101,12 @@ function T.New(receive,refused)
    end
    self.taken=(self.taken or 0)+1;receive(peer,data)
   end)
-  assert(p:Finalize({isRelevantInCombat=false,replaceQueuedMessages=false}))
+  -- Everything this protocol sends is the current state of the match in full: the attack and
+  -- terminal counts are running totals and the rest is fixed for the match, so a packet still
+  -- waiting its turn is always superseded by the next one. Letting the newer packet replace it
+  -- keeps one message in the queue instead of a backlog of stale ones, which matters because
+  -- the broadcast runs on a cooldown that every add-on on the client shares.
+  assert(p:Finalize({isRelevantInCombat=false,replaceQueuedMessages=true}))
  end)
  if not ok then
   self.protocol=nil
@@ -125,7 +130,7 @@ function T:Send(peer,packet)
  if not ok then self.why="送信できません："..why;return false end
  local p={version=2,build=T.BUILD,kind=packet.kind,session=packet.session,seed=packet.seed,startAt=packet.startAt,packed=T.Pack(packet)}
  p.target1,p.target2=T.Identity(peer)
- if self.protocol:Send(p,{replaceQueuedMessages=false})~=true then self.why="LibGroupBroadcastが送信を受け付けませんでした";return false end
+ if self.protocol:Send(p,{replaceQueuedMessages=true})~=true then self.why="LibGroupBroadcastが送信を受け付けませんでした";return false end
  self.why=nil;self.sent=(self.sent or 0)+1;return true
 end
 function T:Report()

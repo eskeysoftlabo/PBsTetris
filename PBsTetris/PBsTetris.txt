@@ -1,8 +1,8 @@
-## Title: |cFF69B4PB's Tamriel de Tetris|r 1.12.0
+## Title: |cFF69B4PB's Tamriel de Tetris|r 1.12.1
 ## Author: |cFF69B4PinkBanther|r
 ## Description: Stone-themed falling-block puzzle with solo score attack and group duels.
-## Version: 1.12.0
-## AddOnVersion: 11200
+## Version: 1.12.1
+## AddOnVersion: 11201
 ## APIVersion: 101050 101051
 ## OptionalDependsOn: LibGroupBroadcast
 ## SavedVariables: PBsTetrisSavedVariables
