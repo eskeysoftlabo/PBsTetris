@@ -1,8 +1,11 @@
 PBT=PBT or {}
+-- Protocol ids are one number per add-on, shared across everything a player has installed, and
+-- whichever add-on declares one second is refused outright. 510 belongs to PB's Translate
+-- (PBsTranslateDictionaryV1) and 511 to PB's Janken, so this one takes 509.
 -- BUILD must equal ## AddOnVersion in both manifests; package.py refuses to build otherwise.
 -- It rides on the wire so that two players on different versions are told so, instead of each
 -- silently discarding the other's packets as unreadable.
-local T={ID=510,BUILD=11001};T.__index=T;PBT.Transport=T
+local T={ID=509,BUILD=11100};T.__index=T;PBT.Transport=T
 -- Development ID, distinct from PBsJanken's 511. Reserve before public release.
 -- attack, height and terminal ride in one word rather than three narrow fields of their own.
 function T.Pack(packet) return (packet.attack or 0)*128+(packet.height or 0)*4+(packet.terminal or 0) end
@@ -108,7 +111,7 @@ function T.New(receive,refused)
   local first=tostring(err):match("^[^\n]*") or tostring(err)
   self.detail=first:gsub("^.*[/\\]","")
   if first:find("already exists") then
-   self.error=string.format("通信ID %d は、このクライアントの別のアドオンがすでに使用しています。PB's Tamriel de Tetris が二重に導入されていないか確認してください。（%s）",T.ID,self.detail)
+   self.error=string.format("通信ID %d は、このクライアントの別のアドオンがすでに使用しています。（%s）",T.ID,self.detail)
   else
    self.error="対戦通信を初期化できません。（"..self.detail.."）"
   end
