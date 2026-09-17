@@ -67,7 +67,7 @@ local function network()
 end
 local function flush() local limit=100;while #queue>0 do limit=limit-1;assert(limit>0);local q=table.remove(queue,1);players[q.peer]:Receive(q.sender,q.p) end end
 local function advance(n) for _=1,n*10 do now=now+.1;players.A:Tick(.1);players.B:Tick(.1);flush() end end
-local function start() network();players.A:Invite('B');flush();equal(players.B.state,'invited');players.B:Accept();flush();advance(9);equal(players.A.state,'playing');equal(players.B.state,'playing') end
+local function start() network();players.A:Invite('B');flush();equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end
 test('idle tick is safe',function() network();advance(1) end)
 test('handshake produces identical sequence',function() start();equal(players.A.engine.piece,players.B.engine.piece);equal(players.A.seed,players.B.seed) end)
 test('cumulative attacks survive duplicates and reordering',function()
@@ -79,10 +79,43 @@ test('topout gives opposite results',function() start();players.A.engine.over=tr
 test('simultaneous topout is reconciled',function() start();players.A.engine.over=true;players.B.engine.over=true;players.A:Tick(.1);players.B:Tick(.1);flush();advance(2);equal(players.A.result,'同時終了・引き分け');equal(players.B.result,'同時終了・引き分け') end)
 test('local topout reconciles before next tick',function() start();players.A.engine.over=true;players.B.engine.over=true;players.A:Tick(.1);flush();equal(players.B.result,'同時終了・引き分け');advance(2);equal(players.A.result,'同時終了・引き分け') end)
 test('quit forfeits',function() start();players.A:Quit();flush();equal(players.B.result,'あなたの勝ち！') end)
-test('disconnect aborts without assigning winner',function() start();drop=true;advance(17);equal(players.A.state,'aborted');equal(players.B.state,'aborted');equal(players.A.result,nil) end)
+test('disconnect aborts without assigning winner',function() start();drop=true;advance(31);equal(players.A.state,'aborted');equal(players.B.state,'aborted');equal(players.A.result,nil) end)
 test('group loss aborts',function() start();allowed=false;advance(1);equal(players.A.state,'aborted') end)
-test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(31);equal(players.A.state,'aborted') end)
+test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(46);equal(players.A.state,'aborted') end)
 test('start acknowledgement loss cannot start guest alone',function() network();players.A:Invite('B');flush();drop=true;players.B:Accept();advance(31);assert(players.A.state~='playing');assert(players.B.state~='playing') end)
+-- The group broadcast runs on a cooldown that every add-on on the client shares, so a hop can
+-- take seconds. Agreeing to start takes four of them.
+local function slowDuel(latency,seconds)
+ network()
+ local inFlight={}
+ for _,name in ipairs({'A','B'}) do
+  local from=name
+  players[name].o.send=function(peer,p) inFlight[#inFlight+1]={at=now+latency,from=from,peer=peer,p=p};return true end
+ end
+ players.A:Invite('B')
+ local accepted=false
+ for _=1,seconds*10 do
+  now=now+0.1
+  local i=1
+  while i<=#inFlight do
+   if now>=inFlight[i].at then local m=table.remove(inFlight,i);players[m.peer]:Receive(m.from,m.p) else i=i+1 end
+  end
+  players.A:Tick(0.1);players.B:Tick(0.1)
+  if not accepted and players.B.state=='invited' then players.B:Accept();accepted=true end
+  if players.A.state=='playing' and players.B.state=='playing' then return true end
+ end
+ return false,players.A.state..'/'..players.B.state
+end
+test('a duel still starts when every hop takes six seconds',function()
+ local ok,states=slowDuel(6,120)
+ assert(ok,'both boards should be playing, but they were '..tostring(states))
+ equal(players.A.seed,players.B.seed)
+end)
+test('a duel still starts when the agreement lands after the moment it named',function()
+ -- Latency past the lead time: the start moment is already in the past when both ends agree.
+ local ok,states=slowDuel(9,120)
+ assert(ok,'both boards should be playing, but they were '..tostring(states))
+end)
 test('the three narrow values ride in one word and come back whole',function()
  dofile('PBsTetris/Transport.lua')
  local T=PBT.Transport
@@ -114,9 +147,9 @@ test('a refused invite says why instead of vanishing',function()
  equal(players.A.state,'aborted')
 end)
 test('unsolicited and malformed packets ignored',function() start();local p=players.A:Packet(5);p.attack=10;players.B:Receive('X',p);equal(players.B.engine.pending,0);p.attack=-1;players.B:Receive('A',p);equal(players.B.engine.pending,0) end)
-test('second match resets final transmission lifetime',function() start();players.A:Quit();flush();advance(21);players.A.o.random=function() return 9876 end;players.A:Invite('B');flush();players.B:Accept();flush();advance(9);equal(players.A.state,'playing');equal(players.A.untilTime,nil);players.A:Quit();flush();assert(players.A.untilTime>now) end)
+test('second match resets final transmission lifetime',function() start();players.A:Quit();flush();advance(21);players.A.o.random=function() return 9876 end;players.A:Invite('B');flush();players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.A.untilTime,nil);players.A:Quit();flush();assert(players.A.untilTime>now) end)
 test('old invite cannot replace finished match',function() start();local invite=players.A:Packet(1);players.A:Quit();flush();players.B:Receive('A',invite);equal(players.B.state,'result') end)
-test('simultaneous invites converge',function() network();players.A:Invite('B');players.B:Invite('A');flush();equal(players.A.state,'inviting');equal(players.B.state,'invited');players.B:Accept();flush();advance(9);equal(players.A.state,'playing');equal(players.B.state,'playing') end)
+test('simultaneous invites converge',function() network();players.A:Invite('B');players.B:Invite('A');flush();equal(players.A.state,'inviting');equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end)
 -- Contracts for the game's actual menu table, including coexistence with another PX child.
 ZO_GamepadEntryData={New=function(_,name,icon) return {SetIconTintOnSelection=function() end,SetIconDisabledTintOnSelection=function() end,SetEnabled=function() end} end}
 dofile('PBsTetris/Menu.lua')

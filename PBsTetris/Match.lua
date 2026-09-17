@@ -1,6 +1,12 @@
 PBT=PBT or {}
 local M={};M.__index=M;PBT.Match=M
 local active={inviting=true,invited=true,accepted=true,countdown=true,playing=true}
+-- BroadcastAddOnDataToGroup runs on a cooldown, and every add-on on the client shares that one
+-- channel, so a hop can take seconds rather than the moment a local test takes. Agreeing to
+-- start takes four hops, which has to fit inside these.
+local LEAD=12         -- from both sides agreeing to the boards starting
+local WINDOW=45       -- how long an invite, an accept and the handshake may take in total
+local QUIET=30        -- silence during play before the duel is abandoned
 local function uint(n,max) return type(n)=="number" and n==math.floor(n) and n>=0 and n<=max end
 function M.New(o) return setmetatable({o=o,state="idle",nextSend=0,closed={},cooldown={}},M) end
 function M:Active() return active[self.state]==true end
@@ -10,7 +16,7 @@ function M:Reset(peer,session,seed,host,state)
  self.peer,self.session,self.seed,self.host,self.state=peer,session,seed,host,state
  self.engine=nil;self.startAt=0;self.armed=false;self.received=0;self.terminal=0
  self.peerTerminal=0;self.peerHeight=0;self.reason=nil;self.result=nil;self.untilTime=nil
- self.lastSeen=self.o.now();self.deadline=self.o.now()+30;self.nextSend=0
+ self.lastSeen=self.o.now();self.deadline=self.o.now()+WINDOW;self.nextSend=0
 end
 function M:Packet(kind)
  return {kind=kind,session=self.session,seed=self.seed,startAt=self.startAt,
@@ -82,12 +88,14 @@ function M:Receive(sender,p)
  self.lastSeen=now
  if p.kind==6 then if self.state~="result" then self:Abort("相手が対戦を中止しました。",false) end;return end
  if p.kind==2 and self.host then
-  if self.state=="inviting" then self.startAt=self.o.wall()+8;self.state="countdown";self.deadline=now+20 end
+  if self.state=="inviting" then self.startAt=self.o.wall()+LEAD;self.state="countdown";self.deadline=now+WINDOW end
   if self.state=="countdown" then self:Send(3) end
  elseif p.kind==3 and not self.host and (self.state=="accepted" or self.state=="countdown") then
   if self.state=="accepted" then
-   if p.startAt<self.o.wall() or p.startAt>self.o.wall()+15 then return end
-   self.startAt=p.startAt;self.state="countdown";self.deadline=now+20
+   -- Wide on purpose. A proposal that spent a while in the send queue can arrive with its
+   -- moment already past, and the two clients' clocks need not agree to the second.
+   if p.startAt<self.o.wall()-WINDOW or p.startAt>self.o.wall()+WINDOW then return end
+   self.startAt=p.startAt;self.state="countdown";self.deadline=now+WINDOW
   elseif p.startAt~=self.startAt then return end
   self:Send(4)
  elseif p.kind==4 and self.host and self.state=="countdown" and p.startAt==self.startAt then
@@ -111,12 +119,17 @@ function M:Tick(dt)
  for k,t in pairs(self.closed) do if now>=t then self.closed[k]=nil end end
  for k,t in pairs(self.cooldown) do if now>=t then self.cooldown[k]=nil end end
  if self:Active() and not self.o.allowed(self.peer) then self:Abort("相手との通信ができないため対戦を中止しました。",true);return end
- if self.state=="countdown" and self.o.wall()>=self.startAt then
-  if not self.armed then self:Abort("開始の同期に失敗しました。もう一度招待してください。",true);return end
+ -- Starts when both ends have agreed and the moment has come, in that order. Reaching the
+ -- moment without having agreed used to end the duel on the spot, which gave the handshake
+ -- only the lead time to finish; it now has until the deadline, and starts at once if the
+ -- agreement lands after the moment has already passed.
+ if self.state=="countdown" and self.armed and self.o.wall()>=self.startAt then
   self.engine=PBT.Engine.New(self.seed,true);self.state="playing";self.lastSeen=now;self:Notify()
- elseif self:Active() and self.state~="playing" and now>=self.deadline then self:Abort("招待が時間切れになりました。",true);return end
+ elseif self:Active() and self.state~="playing" and now>=self.deadline then
+  self:Abort(self.state=="countdown" and "開始の同期に失敗しました。もう一度招待してください。" or "招待が時間切れになりました。",true);return
+ end
  if self.state=="playing" then
-  if now-self.lastSeen>15 then self:Abort("通信が途切れたため、勝敗を付けずに中止しました。",true);return end
+  if now-self.lastSeen>QUIET then self:Abort("通信が途切れたため、勝敗を付けずに中止しました。",true);return end
   if self.engine.sent>65535 then self:Abort("対戦の通信上限に達しました。",true);return end
   if self.engine.over then self.terminal=1;self:Resolve();self:Send(5) end
  end
