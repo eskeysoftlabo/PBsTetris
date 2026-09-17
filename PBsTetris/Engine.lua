@@ -149,7 +149,9 @@ function E:Lock()
   self.b2b=cleared==4
   self.score=self.score+(points+50*self.combo)*self.level
   attack=attack+math.min(4,math.floor(self.combo/2))
+  local was=self.level
   self.lines=self.lines+cleared;self.level=math.floor(self.lines/10)+1
+  if self.level>was then self:Emit('level') end
  else self.combo=-1 end
  local cancelled=math.min(attack,self.pending);self.pending=self.pending-cancelled;attack=attack-cancelled
  if self.versus then self.sent=self.sent+attack end

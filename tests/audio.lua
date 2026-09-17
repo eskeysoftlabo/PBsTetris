@@ -1,7 +1,7 @@
 dofile('PBsTetris/Audio.lua')
 local clock,played,current=10,{},17
 GetFrameTimeSeconds=function() return clock end
-SOUNDS={DEFAULT_CLICK='click',LOCKPICKING_CHAMBER_START='rotate',LOCKPICKING_CHAMBER_LOCKED='lock',SCRYING_CAPTURE_HEX_LARGE='clear'}
+SOUNDS={LEVEL_UP='levelup',DEFAULT_CLICK='click',LOCKPICKING_CHAMBER_START='rotate',LOCKPICKING_CHAMBER_LOCKED='lock',SCRYING_CAPTURE_HEX_LARGE='clear'}
 PlaySound=function(id) played[#played+1]=id end
 GetOverrideMusicMode=function() return current end
 SetOverrideMusicMode=function(mode) current=mode end
@@ -26,7 +26,9 @@ assert(audio:Report():find('要求 5') and audio:Report():find('現在 5') and a
 audio:Stop()
 audio:Play('move');audio:Play('move');assert(#played==1);clock=11;audio:Play('move');assert(#played==2)
 saved.soundEnabled=false;audio:Play('rotate');assert(#played==2)
-saved.soundEnabled=true;local e=PBT.Engine.New(2);audio:Bind(e);e:Drop();assert(played[#played]=='lock')
+saved.soundEnabled=true;clock=clock+1
+audio:Play('level');assert(played[#played]=='levelup','a level up has a sound of its own')
+local e=PBT.Engine.New(2);audio:Bind(e);e:Drop();assert(played[#played]=='lock')
 local last=#played;e.over=true;e:Move(1);assert(#played==last)
 SOUNDS={};clock=12;audio:Play('rotate');assert(#played==last,'unknown built-in sound should be ignored')
 print('PASS audio: music modes, cycling, restoration, ownership, toggles, throttling, engine events, unknown IDs')

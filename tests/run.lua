@@ -47,6 +47,14 @@ test('a level up does not cash in the fall already due',function()
  local y=e.y;e.level=10;e:Tick(.1)
  assert(e.y-y<=2,'one frame after a level up moved '..(e.y-y)..' rows')
 end)
+test('a level up announces itself once, and only when it happens',function()
+ local e=setupClear(4);e.lines=8;local seen={};e.onEvent=function(kind) seen[#seen+1]=kind end
+ e:Lock();equal(e.level,2)
+ local levels=0;for _,kind in ipairs(seen) do if kind=='level' then levels=levels+1 end end
+ equal(levels,1)
+ local flat=setupClear(1);flat.onEvent=function(kind) assert(kind~='level','a clear without a level up says nothing') end
+ flat:Lock();equal(flat.level,1)
+end)
 test('level increases each ten lines',function() local e=setupClear(4);e.lines=8;e:Lock();equal(e.level,2) end)
 test('ghost lies on valid landing',function() local e=E.New(1);local y=e:GhostY();assert(e:Fits(e.x,y,e.rotation));assert(not e:Fits(e.x,y+1,e.rotation)) end)
 local now,queue,players,allowed,drop

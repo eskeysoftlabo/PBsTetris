@@ -93,6 +93,16 @@ print('PASS snow and shine: intensity follows the stack, flakes fall, the glint 
 
 SCENE_MANAGER:Hide('pbtGame');a:Solo();a.ui:CancelFade();reveal()
 assert(a.ui.curtain.hidden and not scene.shown,'a cancelled fade lifts without ever showing the board')
+a:Solo(true);reveal();e=a.soloEngine;clock=clock+1
+a.ui:Refresh();assert(a.ui.banner.hidden,'a new game does not announce level 1')
+e.level=2;clock=clock+.1;a.ui:Refresh()
+assert(not a.ui.banner.hidden and a.ui.banner.text=='レベル 2','a level up is announced')
+clock=clock+2;a.ui:Refresh();assert(a.ui.banner.hidden,'and the announcement goes away on its own')
+e.level=20;clock=clock+.1;a.ui:Refresh();assert(a.ui.banner.text=='レベル 20 · 20G','reaching 20G says so')
+a:Solo(true);reveal();clock=clock+3;a.ui:Refresh()
+assert(a.ui.banner.hidden,'starting over does not announce anything')
+print('PASS level up: announced once, on the board that earned it, and it clears itself')
+
 a.ui:Fade(function() end)
 for _=1,20 do a.ui:Tick(.1) end
 assert(a.ui.curtain.hidden,'a scene that never reports itself shown cannot leave the screen black')

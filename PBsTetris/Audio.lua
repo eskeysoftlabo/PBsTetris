@@ -1,6 +1,6 @@
 PBT=PBT or {}
 local Audio={};Audio.__index=Audio;PBT.Audio=Audio
-local ids={move='DEFAULT_CLICK',rotate='LOCKPICKING_CHAMBER_START',hold='ENCHANTING_POTENCY_RUNE_PLACED',lock='LOCKPICKING_CHAMBER_LOCKED',clear='SCRYING_CAPTURE_HEX_LARGE',quad='SCRYING_CAPTURE_GOAL',start='DUEL_START',win='DUEL_WON',lose='DUEL_FORFEIT'}
+local ids={move='DEFAULT_CLICK',rotate='LOCKPICKING_CHAMBER_START',hold='ENCHANTING_POTENCY_RUNE_PLACED',lock='LOCKPICKING_CHAMBER_LOCKED',clear='SCRYING_CAPTURE_HEX_LARGE',quad='SCRYING_CAPTURE_GOAL',level='LEVEL_UP',start='DUEL_START',win='DUEL_WON',lose='DUEL_FORFEIT'}
 local modes={{key='off',label='BGM：切'},{key='tribute',label='BGM：カード'},{key='champion',label='BGM：星座'},{key='dueling',label='BGM：決闘'},{key='credits',label='BGM：終幕'}}
 -- Named outright rather than looked up in _G: the client's constants are not necessarily raw
 -- entries in the global table, and a lookup that misses turns into silence with nothing to

@@ -14,6 +14,7 @@ local SHINE,SHINE_CYCLE,SHINE_WIDTH=1.5,4.2,.16
 -- on either of those shows the world through the gap. HOLD_MAX is there so a scene that never
 -- reports itself shown cannot leave the screen black.
 local FADE_IN,FADE_OUT,HOLD_MIN,HOLD_MAX=.28,.34,.1,1.2
+local BANNER,BANNER_RISE=1.5,70
 local function box(parent,x,y,w,h)
  local c=WINDOW_MANAGER:CreateControl(nil,parent,CT_BACKDROP);c:SetAnchor(TOPLEFT,parent,TOPLEFT,x,y);c:SetDimensions(w,h)
  c:SetCenterColor(.018,.022,.026,.97);c:SetEdgeColor(.48,.4,.26,1);c:SetEdgeTexture('',1,1,1);return c
@@ -57,6 +58,7 @@ function U.New(app)
  self.record=text(root,65,670,270,75,22)
  self.enemy=text(root,755,575,290,160,22)
  self.footer=text(root,45,800,1010,28,18,'方向キー：移動　下：速く落とす　上：一気に落とす　L1：左回転')
+ self.banner=text(root,390,300,320,60,42,'');self.banner:SetColor(1,.86,.42,1);self.banner:SetDrawLayer(DL_OVERLAY);self.banner:SetHidden(true)
  self.overlay=box(root,402,365,296,200);self.overlay:SetDrawLayer(DL_OVERLAY)
  self.message=text(self.overlay,8,15,280,170,27);self.message:SetDrawLayer(DL_OVERLAY);self.message:SetDrawLevel(1)
  -- A curtain of its own, on the high draw tier, so it covers the gamepad menu the board is
@@ -167,6 +169,27 @@ function U:Tick(dt)
   else self.curtain:SetAlpha(alpha) end
  end
 end
+-- The banner is driven from the level the engine is carrying rather than from an event, so
+-- that it cannot be missed while the board is not on screen and cannot fire on a new game.
+function U:Banner(e,now)
+ local level=e and e.level
+ if e~=self.levelEngine then self.levelEngine=e;self.level=level;self.bannerAt=nil end
+ if level and self.level and level>self.level then
+  self.bannerAt=now;self.banner:SetText(level>=20 and ('レベル '..level..' · 20G') or ('レベル '..level))
+ end
+ self.level=level
+ local at=self.bannerAt and (now-self.bannerAt)/BANNER
+ if not at or at<0 or at>=1 then
+  self.bannerAt=nil
+  -- Hidden here rather than only on the frame it expires: starting a new game clears the
+  -- timer outright, and the label would otherwise stay on screen from then on.
+  if self.bannerOn then self.bannerOn=false;self.banner:SetHidden(true) end
+  return
+ end
+ if not self.bannerOn then self.bannerOn=true;self.banner:SetHidden(false) end
+ self.banner:SetAlpha(math.min(1,at*8)*math.min(1,(1-at)*3.2))
+ self.banner:SetAnchor(TOPLEFT,self.content,TOPLEFT,390,300-BANNER_RISE*at)
+end
 function U:Refresh()
  local app=self.app;local e=app:Engine();local m=app.match
  self.mode:SetText(app.solo and (e and e:Is20G() and 'ひとりで挑戦 · 20G' or 'ひとりで挑戦 · スコアアタック') or ('対戦相手：'..(m.peer or '未選択')))
@@ -184,7 +207,7 @@ function U:Refresh()
   end
   paint(self.cells[y][x],value,shine)
  end end
- self:Snow(e,now)
+ self:Snow(e,now);self:Banner(e,now)
  self:DrawMini(1,e and e.hold)
  for i=1,3 do self:DrawMini(i+1,e and e.queue[i]) end
  self.stats:SetText(string.format('スコア\n%d\n\n消したライン　%d\nレベル　%d',e and e.score or 0,e and e.lines or 0,e and e.level or 1))
