@@ -83,6 +83,17 @@ test('disconnect aborts without assigning winner',function() start();drop=true;a
 test('group loss aborts',function() start();allowed=false;advance(1);equal(players.A.state,'aborted') end)
 test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(31);equal(players.A.state,'aborted') end)
 test('start acknowledgement loss cannot start guest alone',function() network();players.A:Invite('B');flush();drop=true;players.B:Accept();advance(31);assert(players.A.state~='playing');assert(players.B.state~='playing') end)
+test('the three narrow values ride in one word and come back whole',function()
+ dofile('PBsTetris/Transport.lua')
+ local T=PBT.Transport
+ for _,case in ipairs({{0,0,0},{1,1,1},{65535,22,2},{4,0,2},{0,22,0}}) do
+  local packet={attack=case[1],height=case[2],terminal=case[3]}
+  local word=T.Pack(packet)
+  assert(word>=0 and word<4294967296,'the word fits the field it is sent in: '..word)
+  local back=T.Unpack(word,{})
+  equal(back.attack,case[1]);equal(back.height,case[2]);equal(back.terminal,case[3])
+ end
+end)
 test('what may arrive is judged separately from what may be sent',function()
  network()
  -- B may be invited by nobody, but an invite that has already arrived is still accepted.

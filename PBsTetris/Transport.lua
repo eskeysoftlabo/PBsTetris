@@ -1,6 +1,12 @@
 PBT=PBT or {}
 local T={ID=510};T.__index=T;PBT.Transport=T
 -- Development ID, distinct from PBsJanken's 511. Reserve before public release.
+-- attack, height and terminal ride in one word rather than three narrow fields of their own.
+function T.Pack(packet) return (packet.attack or 0)*128+(packet.height or 0)*4+(packet.terminal or 0) end
+function T.Unpack(packed,into)
+ into.terminal=packed%4;into.height=math.floor(packed/4)%32;into.attack=math.floor(packed/128)
+ return into
+end
 function T.Identity(name)
  local h=PBT.SHA256(name);return tonumber(h:sub(1,8),16),tonumber(h:sub(9,16),16)
 end
@@ -37,10 +43,15 @@ function T.New(receive,refused)
   local handler=assert(LibGroupBroadcast:RegisterHandler("PBsTetris"))
   handler:SetDisplayName("PB's Tamriel de Tetris")
   handler:SetDescription("グループ内で落ちものパズル対戦")
-  local p=handler:DeclareProtocol(T.ID,"PBsTetrisV2Dev");self.protocol=p
+  local p=handler:DeclareProtocol(T.ID,"PBsTetrisV3Dev");self.protocol=p
   p:SetDisplayName("PB's Tamriel de Tetris")
-  for _,field in ipairs({{"version",2},{"kind",3},{"target1",32},{"target2",32},{"session",32},{"seed",31},{"startAt",32},{"attack",16},{"height",5},{"terminal",2}}) do
-   p:AddField(LibGroupBroadcast.CreateNumericField(field[1],{numBits=field[2]}))
+  -- Laid out like PBsJanken's, which is the shape known to work on console: two bits of
+  -- version, three of kind, and everything else a full 32 bit word. The odd widths this used
+  -- to declare (31, 16, 5, 2) are the only thing that differed from it at the wire level.
+  p:AddField(LibGroupBroadcast.CreateNumericField("version",{numBits=2}))
+  p:AddField(LibGroupBroadcast.CreateNumericField("kind",{numBits=3}))
+  for _,key in ipairs({"target1","target2","session","seed","startAt","packed"}) do
+   p:AddField(LibGroupBroadcast.CreateNumericField(key,{numBits=32}))
   end
   -- Resolved on use rather than at load: this runs from EVENT_ADD_ON_LOADED, where the client
   -- can still answer an empty display name, and an identity built from one would reject every
@@ -55,7 +66,16 @@ function T.New(receive,refused)
   p:OnData(function(tag,data)
    self.heard=(self.heard or 0)+1
    local mine1,mine2=own()
-   if data.version~=2 or data.target1~=mine1 or data.target2~=mine2 then self.misaddressed=(self.misaddressed or 0)+1;return end
+   if data.version~=2 or data.target1~=mine1 or data.target2~=mine2 then
+    self.misaddressed=(self.misaddressed or 0)+1
+    self.why=string.format("自分宛ではありませんでした（版 %s / 宛先 %s,%s / 自分 %s,%s）",
+     tostring(data.version),tostring(data.target1),tostring(data.target2),tostring(mine1),tostring(mine2))
+    -- Reported rather than dropped quietly: an address that never matches looks exactly like
+    -- an invite that was never sent, and that is the one thing that must not be invisible.
+    if refused then refused(self.why) end
+    return
+   end
+   T.Unpack(data.packed or 0,data)
    local peer=GetUnitDisplayName(tag)
    local ok,why=self:Check(peer,false)
    if not ok then
@@ -75,7 +95,7 @@ function T:Send(peer,packet)
  if not self.protocol:IsEnabled() then self.why="LibGroupBroadcastでこのアドオンの通信が無効になっています";return false end
  local ok,why=self:Check(peer,true)
  if not ok then self.why="送信できません："..why;return false end
- local p={version=2};for k,v in pairs(packet) do p[k]=v end
+ local p={version=2,kind=packet.kind,session=packet.session,seed=packet.seed,startAt=packet.startAt,packed=T.Pack(packet)}
  p.target1,p.target2=T.Identity(peer)
  if self.protocol:Send(p,{replaceQueuedMessages=false})~=true then self.why="LibGroupBroadcastが送信を受け付けませんでした";return false end
  self.why=nil;self.sent=(self.sent or 0)+1;return true
