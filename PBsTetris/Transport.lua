@@ -2,7 +2,7 @@ PBT=PBT or {}
 -- BUILD must equal ## AddOnVersion in both manifests; package.py refuses to build otherwise.
 -- It rides on the wire so that two players on different versions are told so, instead of each
 -- silently discarding the other's packets as unreadable.
-local T={ID=510,BUILD=11000};T.__index=T;PBT.Transport=T
+local T={ID=510,BUILD=11001};T.__index=T;PBT.Transport=T
 -- Development ID, distinct from PBsJanken's 511. Reserve before public release.
 -- attack, height and terminal ride in one word rather than three narrow fields of their own.
 function T.Pack(packet) return (packet.attack or 0)*128+(packet.height or 0)*4+(packet.terminal or 0) end
@@ -100,7 +100,19 @@ function T.New(receive,refused)
   end)
   assert(p:Finalize({isRelevantInCombat=false,replaceQueuedMessages=false}))
  end)
- if not ok then self.protocol=nil;self.error="対戦通信を初期化できません。/pbt debug で詳細を確認できます。";self.detail=tostring(err) end
+ if not ok then
+  self.protocol=nil
+  -- DeclareProtocol only raises when the id or the name is already taken, so that error has
+  -- one cause worth naming: something else on this client already holds the id, most often a
+  -- second copy of this add-on. The library's own message names the protocol sitting there.
+  local first=tostring(err):match("^[^\n]*") or tostring(err)
+  self.detail=first:gsub("^.*[/\\]","")
+  if first:find("already exists") then
+   self.error=string.format("通信ID %d は、このクライアントの別のアドオンがすでに使用しています。PB's Tamriel de Tetris が二重に導入されていないか確認してください。（%s）",T.ID,self.detail)
+  else
+   self.error="対戦通信を初期化できません。（"..self.detail.."）"
+  end
+ end
  return self
 end
 function T:Send(peer,packet)
@@ -114,8 +126,11 @@ function T:Send(peer,packet)
  self.why=nil;self.sent=(self.sent or 0)+1;return true
 end
 function T:Report()
- if self.error then return (self.detail or self.error) end
- local mine1,mine2=self.Own and self.Own()
+ if self.error then return self.error end
+ -- `x and x()` keeps only the first return value, which is how the second half of the
+ -- identity came out nil in the report while the real comparison had both halves.
+ local mine1,mine2
+ if self.Own then mine1,mine2=self.Own() end
  return string.format('通信ID %d / 版 %d / 有効 %s / グループ %d人 / 自分 %s(%s,%s) / 送信 %d / 受信 %d（版違い %d・自分宛でない %d・拒否 %d・採用 %d）%s',
   T.ID,T.BUILD,tostring(self.protocol and self.protocol:IsEnabled()),GetGroupSize() or 0,
   tostring(GetDisplayName()),tostring(mine1),tostring(mine2),

@@ -99,6 +99,15 @@ function A:Initialize()
    if m.state=='invited' then self.solo=false;SCENE_MANAGER:Show('pbtGame') end
    if self.ui then self.ui:Refresh() end
   end})
+ -- Announced on the way in, not only when someone tries to invite: the player being invited
+ -- never invites anyone, so a transport that failed to start was invisible to exactly the
+ -- side where it mattered.
+ if self.transport.error then
+  EVENT_MANAGER:RegisterForEvent('PBsTetrisTransport',EVENT_PLAYER_ACTIVATED,function()
+   EVENT_MANAGER:UnregisterForEvent('PBsTetrisTransport',EVENT_PLAYER_ACTIVATED)
+   self:Alert(self.transport.error)
+  end)
+ end
  self.ui=PBT.UI.New(self);PBT.HookMenus(self)
  SLASH_COMMANDS['/pbt']=function(arg)
   if arg=='20g' then self:Solo(false,true)
