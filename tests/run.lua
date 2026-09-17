@@ -27,6 +27,12 @@ test('a clear hands the drawing side the rows as they stood',function()
  local quiet=E.New(5);quiet.piece='O';quiet.x=5;quiet.y=20;quiet:Lock()
  assert(quiet.wipe==nil,'a lock that clears nothing leaves nothing to wipe')
 end)
+test('an attack spent cancelling is counted, so the rows are all accounted for',function()
+ local e=setupClear(4,3);e:Lock()
+ equal(e.sent,1);equal(e.cancelled,3)
+ equal(e.sent+e.cancelled,4)
+ local clean=setupClear(4);clean:Lock();equal(clean.cancelled,0);equal(clean.sent,4)
+end)
 test('attacks cancel pending garbage',function() local e=setupClear(4,3);e:Lock();equal(e.sent,1);equal(e.pending,0);equal(e:Height(),0) end)
 test('remaining garbage rises after lock',function() local e=setupClear(2,4);e:Lock();equal(e.sent,0);equal(e.pending,0);assert(e:Height()>=3);local holes=0;for x=1,10 do if e.board[22][x]==0 then holes=holes+1 end end;equal(holes,1) end)
 test('garbage RNG does not alter piece queue',function() local a,b=E.New(7),E.New(7);a:AddGarbage(3);a:ApplyGarbage();for i=1,10 do a:Spawn();b:Spawn();equal(a.piece,b.piece) end end)
@@ -70,6 +76,17 @@ local function advance(n) for _=1,n*10 do now=now+.1;players.A:Tick(.1);players.
 local function start() network();players.A:Invite('B');flush();equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end
 test('idle tick is safe',function() network();advance(1) end)
 test('handshake produces identical sequence',function() start();equal(players.A.engine.piece,players.B.engine.piece);equal(players.A.seed,players.B.seed) end)
+test('every row one board sends arrives at the other',function()
+ start()
+ local a,b=players.A.engine,players.B.engine
+ for _=1,5 do
+  for y=19,22 do for x=1,10 do a.board[y][x]=x==5 and 0 or 8 end end
+  a.piece='I';a.rotation=1;a.x=3;a.y=19;a:Lock()
+  advance(2)
+ end
+ equal(players.B.received,a.sent)
+ equal(b.pending,a.sent)
+end)
 test('cumulative attacks survive duplicates and reordering',function()
  start();players.A.engine.sent=4;local old=players.A:Packet(5);players.B:Receive('A',old);players.B:Receive('A',old);equal(players.B.engine.pending,4)
  players.A.engine.sent=7;players.B:Receive('A',players.A:Packet(5));players.B:Receive('A',old);equal(players.B.engine.pending,7)

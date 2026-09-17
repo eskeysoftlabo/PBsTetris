@@ -22,7 +22,7 @@ local ikicks={
 local function row() return {0,0,0,0,0,0,0,0,0,0} end
 function E.New(seed,versus,force20G)
  local self=setmetatable({board={},rng=seed%2147483646+1,garbageRng=(seed+127)%2147483646+1,queue={},
-  force20G=force20G==true,score=0,lines=0,level=1,pending=0,sent=0,combo=-1,b2b=false,versus=versus,elapsed=0,gravity=0,lock=0,resets=0,paused=false},E)
+  force20G=force20G==true,score=0,lines=0,level=1,pending=0,sent=0,cancelled=0,combo=-1,b2b=false,versus=versus,elapsed=0,gravity=0,lock=0,resets=0,paused=false},E)
  for y=1,22 do self.board[y]=row() end
  self:FillQueue(); self:Spawn(); return self
 end
@@ -154,6 +154,7 @@ function E:Lock()
   if self.level>was then self:Emit('level') end
  else self.combo=-1 end
  local cancelled=math.min(attack,self.pending);self.pending=self.pending-cancelled;attack=attack-cancelled
+ self.cancelled=self.cancelled+cancelled
  if self.versus then self.sent=self.sent+attack end
  self:ApplyGarbage();self.held=false
  if not self.over then self:Spawn() end

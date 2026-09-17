@@ -262,7 +262,8 @@ function U:Refresh()
  for i=1,3 do self:DrawMini(i+1,e and e.queue[i]) end
  self.stats:SetText(string.format('スコア\n%d\n\n消したライン　%d\nレベル　%d',e and e.score or 0,e and e.lines or 0,e and e.level or 1))
  self.record:SetText((e and e.force20G and '20G 自己ベスト\n' or '自己ベスト\n')..(e and e.force20G and (app.saved.highScore20G or 0) or app.saved.highScore))
- self.enemy:SetText(app.solo and (e and e:Is20G() and '20G · 即時接地\n地面を滑らせて配置\n固定猶予 0.5秒' or '10ラインごとに速度上昇\nレベル20から20G') or string.format('高さ\n%d / 22\n\n受けるおじゃま\n%d 段\n\n送ったおじゃま\n%d 段',m.peerHeight or 0,e and e.pending or 0,e and e.sent or 0))
+ self.enemy:SetText(app.solo and (e and e:Is20G() and '20G · 即時接地\n地面を滑らせて配置\n固定猶予 0.5秒' or '10ラインごとに速度上昇\nレベル20から20G') or string.format('高さ\n%d / 22\n\n送ったおじゃま\n%d 段\n\n受けたおじゃま\n%d 段\n\n相殺した\n%d 段\n待機中 %d 段',
+   m.peerHeight or 0,e and e.sent or 0,m.received or 0,e and e.cancelled or 0,e and e.pending or 0))
  local status=''
  if app.solo then
   if e.over then status='挑戦終了\n\nスコア　'..e.score..'\nもう一度挑戦できます'

@@ -82,11 +82,7 @@ function A:Initialize()
  self.audio=PBT.Audio.New(self.saved)
  self.transport=PBT.Transport.New(function(sender,p)
   if self.solo and self.ui.scene:IsShowing() then return end
-  local before=self.match.state
   self.match:Receive(sender,p)
-  if p.kind==1 and self.match.state==before and before~='invited' then
-   self:Notice(sender..' から招待を受信しましたが、受け付けられませんでした。/pbt debug をご確認ください。')
-  end
  end,function(why) self:Notice('対戦の受信を弾きました：'..why) end)
  self.match=PBT.Match.New({name=GetDisplayName(),now=GetFrameTimeSeconds,wall=GetTimeStamp,random=function() return math.random(1,2147483646) end,
   allowed=function(peer) return self.transport:Allowed(peer) end,allowedFrom=function(peer) return self.transport:AllowedFrom(peer) end,send=function(peer,p) return self.transport:Send(peer,p) end,
