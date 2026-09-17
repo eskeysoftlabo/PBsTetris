@@ -24,6 +24,9 @@ function M:Invite(peer)
  if self:Active() or peer==self.o.name or not self.o.allowed(peer) then return false end
  self:Reset(peer,self.o.random(),self.o.random()%2147483646+1,true,"inviting")
  if self:Send(1) then self:Notify();return true end
+ -- Send already aborted with a reason. Returning it is what puts it in front of the player:
+ -- the board never opens on a failed invite, so nothing else would ever show it.
+ return false,self.reason
 end
 function M:Accept()
  if self.state~="invited" then return end

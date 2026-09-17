@@ -1,8 +1,10 @@
 -- Runtime wiring smoke test with explicit ESO API doubles (not an ESO emulator).
 local function control()
  local c={}
- for _,name in ipairs({'SetAnchor','SetAnchorFill','SetDimensions','SetCenterColor','SetEdgeColor','SetEdgeTexture','SetFont','SetHorizontalAlignment','SetColor','SetDrawLayer','SetDrawLevel','SetDrawTier','SetTexture','SetScale'}) do c[name]=function() end end
+ for _,name in ipairs({'SetAnchorFill','SetCenterColor','SetEdgeColor','SetEdgeTexture','SetFont','SetHorizontalAlignment','SetColor','SetDrawLayer','SetDrawLevel','SetDrawTier','SetTexture','SetScale'}) do c[name]=function() end end
  c.SetAlpha=function(self,v) self.alpha=v end
+ c.SetAnchor=function(self,_,_,_,x,y) self.x,self.y=x,y end
+ c.SetDimensions=function(self,w,h) self.w,self.h=w,h end
  c.SetHidden=function(self,v) self.hidden=v end;c.SetText=function(self,v) self.text=v end
  c.GetHeight=function() return 1080 end;c.GetWidth=function() return 1920 end
  return c
@@ -107,3 +109,22 @@ a.ui:Fade(function() end)
 for _=1,20 do a.ui:Tick(.1) end
 assert(a.ui.curtain.hidden,'a scene that never reports itself shown cannot leave the screen black')
 print('PASS fade: the screen darkens before the board, waits for it, and combat can call it off')
+
+-- Duel layout: the player's own half on the left, the opponent's on the right.
+a:Solo(true);reveal();a.ui:Refresh()
+local soloBoard=a.ui.cells[1][1].x
+assert(a.ui.record.hidden==false and a.ui.gaugeFrame.hidden,'solo keeps its record and has no opponent half')
+a.solo=false;a.match:Reset('@other',7,42,true,'playing');a.match.engine=PBT.Engine.New(42,true)
+a.match.peerHeight=11;a.ui:Refresh()
+assert(a.ui.cells[1][1].x<soloBoard,'the board moves off centre for a duel')
+for y=1,20 do for x=1,10 do assert(a.ui.cells[y][x].x+30<=550,'every cell of the board is in the left half') end end
+for _,index in ipairs({1,2,3,4}) do
+ for _,c in ipairs(a.ui.minis[index]) do assert(c.x+27<=550,'the hold and next panels are in the left half too') end
+end
+assert(a.ui.gaugeFrame.hidden==false and a.ui.peerLabel.hidden==false,'the opponent gets the right half')
+assert(a.ui.gauge.hidden==false and a.ui.gauge.h==math.floor(600*11/22),'the gauge stands at the height that was reported')
+assert(a.ui.gauge.x>=550,'and it stands on the right')
+a.match.peerHeight=0;a.ui:Refresh();assert(a.ui.gauge.hidden,'an empty board has nothing to show')
+a.solo=true;a.ui:Refresh()
+assert(a.ui.cells[1][1].x==soloBoard and a.ui.gaugeFrame.hidden,'going back to solo puts the board back')
+print('PASS duel layout: own half on the left, opponent half on the right, restored for solo')

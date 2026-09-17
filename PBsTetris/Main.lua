@@ -20,7 +20,9 @@ function A:Challenge(peer)
  if not self.transport:Allowed(peer) then self:Alert('同じグループの、戦闘中ではない相手を招待してください。');return end
  self:Save();if self.soloEngine then self.soloEngine.paused=true end
  self.solo=false;self:ClearKeys()
- if self.match:Invite(peer) then self.ui:Fade(function() SCENE_MANAGER:Show('pbtGame') end) end
+ local ok,reason=self.match:Invite(peer)
+ if ok then self.ui:Fade(function() SCENE_MANAGER:Show('pbtGame') end)
+ else self:Alert(reason or '招待を送れませんでした。/pbt debug で詳細を確認できます。') end
 end
 function A:Hidden()
  self.ui:CancelFade();self.audio:Stop()
@@ -90,7 +92,7 @@ function A:Initialize()
   if arg=='20g' then self:Solo(false,true)
   elseif arg=='music' then self:Alert(self.audio:Cycle(self:Playable()))
   elseif arg=='sound' then self.saved.soundEnabled=not self.saved.soundEnabled;self:Alert(self.saved.soundEnabled and '効果音：入' or '効果音：切')
-  elseif arg=='debug' then d(self.transport.detail or self.transport.error or '通信初期化済み・開発用ID 510');d(self.audio:Report()) else self:Solo() end
+  elseif arg=='debug' then d(self.transport:Report());d(self.audio:Report()) else self:Solo() end
  end
  self.lastTick=GetFrameTimeSeconds();self.drawAt=0
  EVENT_MANAGER:RegisterForUpdate('PBsTetrisTick',16,function()

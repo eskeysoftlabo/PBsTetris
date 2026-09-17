@@ -83,6 +83,13 @@ test('disconnect aborts without assigning winner',function() start();drop=true;a
 test('group loss aborts',function() start();allowed=false;advance(1);equal(players.A.state,'aborted') end)
 test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(31);equal(players.A.state,'aborted') end)
 test('start acknowledgement loss cannot start guest alone',function() network();players.A:Invite('B');flush();drop=true;players.B:Accept();advance(31);assert(players.A.state~='playing');assert(players.B.state~='playing') end)
+test('a refused invite says why instead of vanishing',function()
+ network();allowed=true
+ players.A.o.send=function() return false end
+ local ok,reason=players.A:Invite('B')
+ assert(not ok,'the invite failed');assert(type(reason)=='string' and #reason>0,'and it came back with a reason')
+ equal(players.A.state,'aborted')
+end)
 test('unsolicited and malformed packets ignored',function() start();local p=players.A:Packet(5);p.attack=10;players.B:Receive('X',p);equal(players.B.engine.pending,0);p.attack=-1;players.B:Receive('A',p);equal(players.B.engine.pending,0) end)
 test('second match resets final transmission lifetime',function() start();players.A:Quit();flush();advance(21);players.A.o.random=function() return 9876 end;players.A:Invite('B');flush();players.B:Accept();flush();advance(9);equal(players.A.state,'playing');equal(players.A.untilTime,nil);players.A:Quit();flush();assert(players.A.untilTime>now) end)
 test('old invite cannot replace finished match',function() start();local invite=players.A:Packet(1);players.A:Quit();flush();players.B:Receive('A',invite);equal(players.B.state,'result') end)
