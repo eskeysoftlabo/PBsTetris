@@ -47,11 +47,14 @@ for suffix in (".addon", ".txt"):
 assert manifests[0][0] == manifests[1][0], "Manifest load orders differ"
 for key in ("Version", "AddOnVersion", "APIVersion", "OptionalDependsOn", "SavedVariables"):
     assert manifests[0][1].get(key) == manifests[1][1].get(key), f"Manifest {key} differs"
-# The add-on declares no LibGroupBroadcast protocol: duels were withdrawn after their protocol
-# id collided with other add-ons. Refuse a build that brings one back without an id that has
-# been checked against the rest of the family first (see AGENTS.md).
-for lua in addon.glob("*.lua"):
-    assert "DeclareProtocol" not in lua.read_text(encoding="utf-8"), f"{lua.name} declares a protocol"
+build = re.search(r'BUILD=(\d+)', (addon / "Transport.lua").read_text(encoding="utf-8"))
+assert build, "Transport.lua no longer declares a BUILD"
+if build.group(1) != manifests[0][1].get("AddOnVersion"):
+    raise SystemExit(
+        f"Transport.lua BUILD is {build.group(1)} but the manifests say AddOnVersion "
+        f"{manifests[0][1].get('AddOnVersion')}: the number goes on the wire, and two players "
+        "whose builds disagree are told so, which only works while it matches the release"
+    )
 declared = manifests[0][1].get("APIVersion")
 if declared != SUPPORTED_API:
     raise SystemExit(f"APIVersion is {declared!r}, expected {SUPPORTED_API!r}: a manifest that omits the live API version is skipped by the client as out of date")

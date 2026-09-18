@@ -57,6 +57,12 @@ function U.New(app)
  self.stats=text(root,65,390,270,260,27)
  self.record=text(root,65,670,270,75,22)
  self.enemy=text(root,755,575,290,160,22)
+ -- The duel's right half. The opponent's board is never sent, only how high it stands, so
+ -- what goes here is that height at the same scale as the player's own stack rather than a
+ -- guess at its shape.
+ self.peerLabel=text(root,565,173,190,35,27,'相手');self.peerLabel:SetHidden(true)
+ self.gaugeFrame=box(root,765,162,320,620);self.gaugeFrame:SetHidden(true)
+ self.gauge=box(root,775,172,300,1);self.gauge:SetCenterColor(.42,.6,.78,.45);self.gauge:SetEdgeColor(.6,.76,.9,.5);self.gauge:SetHidden(true)
  self.footer=text(root,45,800,1010,28,18,'方向キー：移動　下：速く落とす　上：一気に落とす　L1：左回転')
  self.banner=text(root,390,300,320,60,42,'');self.banner:SetColor(1,.86,.42,1);self.banner:SetDrawLayer(DL_OVERLAY);self.banner:SetHidden(true)
  self.overlay=box(root,402,365,296,200);self.overlay:SetDrawLayer(DL_OVERLAY)
@@ -93,6 +99,48 @@ end
 function U:Mini(x,y)
  local cells={};for i=1,16 do cells[i]=tile(self.content,x+((i-1)%4)*27,y+math.floor((i-1)/4)*27,27) end
  self.minis[#self.minis+1]=cells
+end
+-- Solo keeps the board in the middle with a panel either side. A duel splits the screen down
+-- the middle instead: everything of the player's own on the left, the opponent on the right.
+local LAYOUTS={
+ solo={box=390,cells=400,hold={65,173,270},holdCells={140,220},next={765,173,270},
+  nextCells={{840,220},{840,332},{840,444}},stats={65,390,270,260},enemy={755,575,290,160},banner=390,overlay=402},
+ versus={box=215,cells=225,hold={10,173,190},holdCells={30,215},next={10,330,190},
+  nextCells={{30,372},{30,484},{30,596}},stats={10,690,190,150},enemy={565,215,190,260},banner=215,overlay=227},
+}
+function U:PlaceMini(index,x,y)
+ for i,c in ipairs(self.minis[index]) do
+  c:SetAnchor(TOPLEFT,self.content,TOPLEFT,x+((i-1)%4)*27,y+math.floor((i-1)/4)*27)
+ end
+end
+function U:Layout(versus)
+ local key=versus and 'versus' or 'solo'
+ if self.layout==key then return end
+ self.layout=key
+ local at=LAYOUTS[key];local content=self.content
+ local function place(control,x,y,w,h)
+  control:SetAnchor(TOPLEFT,content,TOPLEFT,x,y)
+  if w then control:SetDimensions(w,h) end
+ end
+ place(self.boardBox,at.box,162,320,620)
+ for y=1,20 do for x=1,10 do place(self.cells[y][x],at.cells+(x-1)*30,172+(y-1)*30) end end
+ place(self.holdLabel,at.hold[1],at.hold[2],at.hold[3],35)
+ place(self.nextLabel,at.next[1],at.next[2],at.next[3],35)
+ self:PlaceMini(1,at.holdCells[1],at.holdCells[2])
+ for i=1,3 do self:PlaceMini(i+1,at.nextCells[i][1],at.nextCells[i][2]) end
+ place(self.stats,at.stats[1],at.stats[2],at.stats[3],at.stats[4])
+ place(self.enemy,at.enemy[1],at.enemy[2],at.enemy[3],at.enemy[4])
+ place(self.banner,at.banner,300,320,60)
+ place(self.overlay,at.overlay,365,296,200)
+ self.record:SetHidden(versus)
+ self.peerLabel:SetHidden(not versus);self.gaugeFrame:SetHidden(not versus)
+ if not versus then self.gauge:SetHidden(true) end
+end
+function U:Gauge(height)
+ local tall=math.floor(600*math.min(22,math.max(0,height or 0))/22)
+ if tall<2 then self.gauge:SetHidden(true);return end
+ self.gauge:SetHidden(false);self.gauge:SetDimensions(300,tall)
+ self.gauge:SetAnchor(TOPLEFT,self.content,TOPLEFT,775,772-tall)
 end
 function U:DrawMini(index,name)
  local values={};if name then for _,p in ipairs(PBT.Engine.Cells(name,0,0,0)) do values[p[2]*4+p[1]+1]=PBT.Engine.ids[name] end end
@@ -191,8 +239,10 @@ function U:Banner(e,now)
  self.banner:SetAnchor(TOPLEFT,self.content,TOPLEFT,390,300-BANNER_RISE*at)
 end
 function U:Refresh()
- local app=self.app;local e=app:Engine()
- self.mode:SetText(e and e:Is20G() and 'ひとりで挑戦 · 20G' or 'ひとりで挑戦 · スコアアタック')
+ local app=self.app;local e=app:Engine();local m=app.match
+ self:Layout(not app.solo)
+ self.mode:SetText(app.solo and (e and e:Is20G() and 'ひとりで挑戦 · 20G' or 'ひとりで挑戦 · スコアアタック') or ('対戦相手：'..(m.peer or '未選択')))
+ if not app.solo then self.peerLabel:SetText(m.peer or '相手');self:Gauge(m.peerHeight) end
  local now=GetFrameTimeSeconds()
  local wipe,swept,tint=self:Wipe(e);self.wiping=wipe~=nil
  local board=wipe and wipe.board or (e and e:View())
@@ -212,10 +262,17 @@ function U:Refresh()
  for i=1,3 do self:DrawMini(i+1,e and e.queue[i]) end
  self.stats:SetText(string.format('スコア\n%d\n\n消したライン　%d\nレベル　%d',e and e.score or 0,e and e.lines or 0,e and e.level or 1))
  self.record:SetText((e and e.force20G and '20G 自己ベスト\n' or '自己ベスト\n')..(e and e.force20G and (app.saved.highScore20G or 0) or app.saved.highScore))
- self.enemy:SetText(e and e:Is20G() and '20G · 即時接地\n地面を滑らせて配置\n固定猶予 0.5秒' or '10ラインごとに速度上昇\nレベル20から20G')
+ self.enemy:SetText(app.solo and (e and e:Is20G() and '20G · 即時接地\n地面を滑らせて配置\n固定猶予 0.5秒' or '10ラインごとに速度上昇\nレベル20から20G') or string.format('高さ\n%d / 22\n\n送ったおじゃま\n%d 段\n\n受けたおじゃま\n%d 段\n\n相殺した\n%d 段\n待機中 %d 段',
+   m.peerHeight or 0,e and e.sent or 0,m.received or 0,e and e.cancelled or 0,e and e.pending or 0))
  local status=''
- if e and e.over then status='挑戦終了\n\nスコア　'..e.score..'\nもう一度挑戦できます'
- elseif e and e.paused then status='一時停止\n\n再開して冒険の続きを' end
+ if app.solo then
+  if e.over then status='挑戦終了\n\nスコア　'..e.score..'\nもう一度挑戦できます'
+  elseif e.paused then status='一時停止\n\n再開して冒険の続きを' end
+ else
+  local labels={inviting='招待を送りました\n\n相手の返答を待っています',invited='対戦に招待されました\n\n承諾すると開始します',accepted='開始を準備しています',result=m.result,aborted=m.reason,idle='対人メニューから\n相手を招待してください'}
+  status=labels[m.state] or ''
+  if m.state=='countdown' then status='まもなく対戦開始\n\n'..math.max(0,m.startAt-GetTimeStamp()) end
+ end
  self.overlay:SetHidden(status=='');self.message:SetText(status)
  if self.scene:IsShowing() then KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybinds) end
 end
