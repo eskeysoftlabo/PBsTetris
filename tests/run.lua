@@ -1,6 +1,6 @@
 -- Pure Lua tests. Run from the project root with Lua 5.1+.
 unpack=unpack or table.unpack
-for _,file in ipairs({'SHA256','Engine','Match'}) do dofile('PBsTetris/'..file..'.lua') end
+dofile('PBsTetris/Engine.lua')
 local count=0
 local function test(name,f) local ok,err=pcall(f);if not ok then error(name..': '..tostring(err)) end;count=count+1;print('PASS '..name) end
 local E=PBT.Engine
@@ -10,7 +10,6 @@ local function setupClear(n,pending)
  for y=23-n,22 do for x=1,10 do e.board[y][x]=x==5 and 0 or 8 end end
  e.piece='I';e.rotation=1;e.x=3;e.y=19;e.pending=pending or 0;return e
 end
-test('SHA-256 standard vector',function() equal(PBT.SHA256('abc'),'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad') end)
 test('seven-bag and deterministic queue',function()
  local a,b=E.New(18),E.New(18);local seen={}
  for i=1,7 do equal(a.piece,b.piece);assert(not seen[a.piece]);seen[a.piece]=true;a:Spawn();b:Spawn() end
@@ -63,110 +62,6 @@ test('a level up announces itself once, and only when it happens',function()
 end)
 test('level increases each ten lines',function() local e=setupClear(4);e.lines=8;e:Lock();equal(e.level,2) end)
 test('ghost lies on valid landing',function() local e=E.New(1);local y=e:GhostY();assert(e:Fits(e.x,y,e.rotation));assert(not e:Fits(e.x,y+1,e.rotation)) end)
-local now,queue,players,allowed,drop
-local function network()
- now=100;queue={};players={};allowed=true;drop=false
- for _,name in ipairs({'A','B'}) do
-  players[name]=PBT.Match.New({name=name,now=function() return now end,wall=function() return math.floor(now)+100000 end,random=function() return name=='A' and 1234 or 4321 end,allowed=function() return allowed end,
-  send=function(peer,p) if not drop then queue[#queue+1]={sender=name,peer=peer,p=p} end;return true end})
- end
-end
-local function flush() local limit=100;while #queue>0 do limit=limit-1;assert(limit>0);local q=table.remove(queue,1);players[q.peer]:Receive(q.sender,q.p) end end
-local function advance(n) for _=1,n*10 do now=now+.1;players.A:Tick(.1);players.B:Tick(.1);flush() end end
-local function start() network();players.A:Invite('B');flush();equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end
-test('idle tick is safe',function() network();advance(1) end)
-test('handshake produces identical sequence',function() start();equal(players.A.engine.piece,players.B.engine.piece);equal(players.A.seed,players.B.seed) end)
-test('every row one board sends arrives at the other',function()
- start()
- local a,b=players.A.engine,players.B.engine
- for _=1,5 do
-  for y=19,22 do for x=1,10 do a.board[y][x]=x==5 and 0 or 8 end end
-  a.piece='I';a.rotation=1;a.x=3;a.y=19;a:Lock()
-  advance(2)
- end
- equal(players.B.received,a.sent)
- equal(b.pending,a.sent)
-end)
-test('cumulative attacks survive duplicates and reordering',function()
- start();players.A.engine.sent=4;local old=players.A:Packet(5);players.B:Receive('A',old);players.B:Receive('A',old);equal(players.B.engine.pending,4)
- players.A.engine.sent=7;players.B:Receive('A',players.A:Packet(5));players.B:Receive('A',old);equal(players.B.engine.pending,7)
-end)
-test('lost attack snapshot recovered on retry',function() start();drop=true;players.A.engine.sent=3;advance(2);equal(players.B.engine.pending,0);drop=false;advance(2);equal(players.B.engine.pending,3) end)
-test('topout gives opposite results',function() start();players.A.engine.over=true;advance(1);equal(players.A.result,'あなたの負け');equal(players.B.result,'あなたの勝ち！') end)
-test('simultaneous topout is reconciled',function() start();players.A.engine.over=true;players.B.engine.over=true;players.A:Tick(.1);players.B:Tick(.1);flush();advance(2);equal(players.A.result,'同時終了・引き分け');equal(players.B.result,'同時終了・引き分け') end)
-test('local topout reconciles before next tick',function() start();players.A.engine.over=true;players.B.engine.over=true;players.A:Tick(.1);flush();equal(players.B.result,'同時終了・引き分け');advance(2);equal(players.A.result,'同時終了・引き分け') end)
-test('quit forfeits',function() start();players.A:Quit();flush();equal(players.B.result,'あなたの勝ち！') end)
-test('disconnect aborts without assigning winner',function() start();drop=true;advance(31);equal(players.A.state,'aborted');equal(players.B.state,'aborted');equal(players.A.result,nil) end)
-test('group loss aborts',function() start();allowed=false;advance(1);equal(players.A.state,'aborted') end)
-test('unaccepted invitation expires',function() network();players.A:Invite('B');flush();advance(46);equal(players.A.state,'aborted') end)
-test('start acknowledgement loss cannot start guest alone',function() network();players.A:Invite('B');flush();drop=true;players.B:Accept();advance(31);assert(players.A.state~='playing');assert(players.B.state~='playing') end)
--- The group broadcast runs on a cooldown that every add-on on the client shares, so a hop can
--- take seconds. Agreeing to start takes four of them.
-local function slowDuel(latency,seconds)
- network()
- local inFlight={}
- for _,name in ipairs({'A','B'}) do
-  local from=name
-  players[name].o.send=function(peer,p) inFlight[#inFlight+1]={at=now+latency,from=from,peer=peer,p=p};return true end
- end
- players.A:Invite('B')
- local accepted=false
- for _=1,seconds*10 do
-  now=now+0.1
-  local i=1
-  while i<=#inFlight do
-   if now>=inFlight[i].at then local m=table.remove(inFlight,i);players[m.peer]:Receive(m.from,m.p) else i=i+1 end
-  end
-  players.A:Tick(0.1);players.B:Tick(0.1)
-  if not accepted and players.B.state=='invited' then players.B:Accept();accepted=true end
-  if players.A.state=='playing' and players.B.state=='playing' then return true end
- end
- return false,players.A.state..'/'..players.B.state
-end
-test('a duel still starts when every hop takes six seconds',function()
- local ok,states=slowDuel(6,120)
- assert(ok,'both boards should be playing, but they were '..tostring(states))
- equal(players.A.seed,players.B.seed)
-end)
-test('a duel still starts when the agreement lands after the moment it named',function()
- -- Latency past the lead time: the start moment is already in the past when both ends agree.
- local ok,states=slowDuel(9,120)
- assert(ok,'both boards should be playing, but they were '..tostring(states))
-end)
-test('the three narrow values ride in one word and come back whole',function()
- dofile('PBsTetris/Transport.lua')
- local T=PBT.Transport
- for _,case in ipairs({{0,0,0},{1,1,1},{65535,22,2},{4,0,2},{0,22,0}}) do
-  local packet={attack=case[1],height=case[2],terminal=case[3]}
-  local word=T.Pack(packet)
-  assert(word>=0 and word<4294967296,'the word fits the field it is sent in: '..word)
-  local back=T.Unpack(word,{})
-  equal(back.attack,case[1]);equal(back.height,case[2]);equal(back.terminal,case[3])
- end
-end)
-test('what may arrive is judged separately from what may be sent',function()
- network()
- -- B may be invited by nobody, but an invite that has already arrived is still accepted.
- players.B.o.allowed=function() return false end
- players.B.o.allowedFrom=function() return true end
- players.A:Invite('B');flush()
- equal(players.B.state,'invited')
- players.B.o.allowedFrom=function() return false end
- network();players.B.o.allowed=function() return true end;players.B.o.allowedFrom=function() return false end
- players.A:Invite('B');flush()
- equal(players.B.state,'idle')
-end)
-test('a refused invite says why instead of vanishing',function()
- network();allowed=true
- players.A.o.send=function() return false end
- local ok,reason=players.A:Invite('B')
- assert(not ok,'the invite failed');assert(type(reason)=='string' and #reason>0,'and it came back with a reason')
- equal(players.A.state,'aborted')
-end)
-test('unsolicited and malformed packets ignored',function() start();local p=players.A:Packet(5);p.attack=10;players.B:Receive('X',p);equal(players.B.engine.pending,0);p.attack=-1;players.B:Receive('A',p);equal(players.B.engine.pending,0) end)
-test('second match resets final transmission lifetime',function() start();players.A:Quit();flush();advance(21);players.A.o.random=function() return 9876 end;players.A:Invite('B');flush();players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.A.untilTime,nil);players.A:Quit();flush();assert(players.A.untilTime>now) end)
-test('old invite cannot replace finished match',function() start();local invite=players.A:Packet(1);players.A:Quit();flush();players.B:Receive('A',invite);equal(players.B.state,'result') end)
-test('simultaneous invites converge',function() network();players.A:Invite('B');players.B:Invite('A');flush();equal(players.A.state,'inviting');equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end)
 -- Contracts for the game's actual menu table, including coexistence with another PX child.
 ZO_GamepadEntryData={New=function(_,name,icon) return {SetIconTintOnSelection=function() end,SetIconDisabledTintOnSelection=function() end,SetEnabled=function() end} end}
 dofile('PBsTetris/Menu.lua')
@@ -183,62 +78,6 @@ end)
 test('existing PX games retained',function()
  ZO_MENU_ENTRIES={{id=2,data={scene='gamepad_options_root'}},{id='other',data={name='ゲームセンターPX',subMenu={{name='別のゲーム'}}},subMenu={{id='othergame',data={name='別のゲーム'}}}}}
  PBT.EnsureMenu({});equal(#ZO_MENU_ENTRIES,2);equal(#ZO_MENU_ENTRIES[2].subMenu,3)
-end)
-local function stubLibrary(fail)
- LibGroupBroadcast={RegisterHandler=function()
-  return {SetDisplayName=function() end,SetDescription=function() end,
-   DeclareProtocol=function() error(fail,0) end}
- end}
- dofile('PBsTetris/Transport.lua')
- return PBT.Transport.New(function() end)
-end
-test('the protocol id is one nothing else in the family claims',function()
- dofile('PBsTetris/Transport.lua')
- local id=PBT.Transport.ID
- assert(id>=0 and id<=511,'inside the nine bits the library gives an id: '..id)
- assert(id~=510,"510 belongs to PB's Translate")
- assert(id~=511,"511 belongs to PB's Janken")
-end)
-test('queued packets are superseded rather than stacked up',function()
- local finalized,sent
- LibGroupBroadcast={CreateNumericField=function() return {} end,
-  RegisterHandler=function()
-   return {SetDisplayName=function() end,SetDescription=function() end,DeclareProtocol=function()
-    return {SetDisplayName=function() end,AddField=function() end,OnData=function() end,
-     IsEnabled=function() return true end,
-     Finalize=function(_,options) finalized=options;return true end,
-     Send=function(_,_,options) sent=options;return true end}
-   end}
-  end}
- dofile('PBsTetris/Transport.lua')
- local transport=PBT.Transport.New(function() end)
- equal(transport.error,nil)
- assert(finalized.replaceQueuedMessages,'the protocol asks for it')
- GetGroupSize=function() return 2 end;GetGroupUnitTagByIndex=function() return 'group2' end
- GetUnitDisplayName=function() return '@peer' end;GetDisplayName=function() return '@self' end
- IsUnitOnline=function() return true end;IsIgnored=function() return false end
- IsUnitInCombat=function() return false end;GetUnitName=function() return 'Peer' end
- CanCommunicateWith=function() return true end
- assert(transport:Send('@peer',{kind=1,session=1,seed=1,startAt=0}),'the send went through')
- assert(sent.replaceQueuedMessages,'and every packet asks for it too')
-end)
-test('a protocol id already in use is named as such',function()
- local taken=stubLibrary("Protocol with ID 509 already exists with name 'SomeOtherAddon'.")
- assert(taken.error:find('すでに使用'),'the report says the id is taken: '..taken.error)
- assert(taken.error:find('SomeOtherAddon'),'and names what is holding it: '..taken.error)
- equal(taken.protocol,nil)
- equal(taken:Report(),taken.error)
-end)
-test('any other failure to start is reported as itself',function()
- local broken=stubLibrary("something else went wrong")
- assert(not broken.error:find('二重に導入'),'not blamed on a duplicate: '..broken.error)
- assert(broken.error:find('something else went wrong'),'the cause survives: '..broken.error)
-end)
-test('a missing library is reported before anything else',function()
- LibGroupBroadcast=nil;dofile('PBsTetris/Transport.lua')
- local none=PBT.Transport.New(function() end)
- assert(none.error:find('LibGroupBroadcast'),none.error)
- equal(none:Report(),none.error)
 end)
 print(string.format('%d tests passed',count))
 dofile('tests/integration.lua')

@@ -31,13 +31,4 @@ end
 function PBT.HookMenus(app)
  PBT.EnsureMenu(app)
  ZO_PreHook(MAIN_MENU_GAMEPAD,'RefreshMainList',function() PBT.EnsureMenu(app) end)
- ZO_PreHook(PLAYER_TO_PLAYER,'AddMenuEntry',function(menu,label)
-  if label~=GetString(SI_RADIAL_MENU_CANCEL_BUTTON) then return end
-  local peer=menu.currentTargetDisplayName
-  if not peer or peer=='' or peer==GetDisplayName() or IsIgnored(peer) then return end
-  if not CanCommunicateWith(menu.currentTargetCharacterNameRaw) then return end
-  menu:AddMenuEntry('タムリエル de テトリス',{enabledNormal=icon,enabledSelected=icon,disabledNormal=icon,disabledSelected=icon},true,function()
-   zo_callLater(function() app:Challenge(peer) end,0)
-  end)
- end)
 end

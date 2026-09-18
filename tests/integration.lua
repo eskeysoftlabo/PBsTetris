@@ -28,10 +28,9 @@ ZO_SavedVars={NewAccountWide=function() return {highScore=0,bestLines=0} end}
 local clock=100;GetFrameTimeSeconds=function() return clock end;GetTimeStamp=function() return 100000 end;GetDisplayName=function() return '@self' end
 ZO_PreHook=function() end;ZO_Alert=function() end;SLASH_COMMANDS={}
 EVENT_MANAGER={RegisterForEvent=function() end,UnregisterForEvent=function() end,RegisterForUpdate=function() end}
-PBT.Transport={New=function() return {Allowed=function() return true end,Send=function() return true end} end}
 PBT.HookMenus=function() end
 for _,name in ipairs({'Audio','UI','Main'}) do dofile('PBsTetris/'..name..'.lua') end
-local a=PBT.App;a:Initialize();a.match:Tick(0)
+local a=PBT.App;a:Initialize()
 assert(a.ui.root.hidden,'the window starts hidden')
 -- Opening the board goes through the fade, so the tests have to let the curtain fall and lift
 -- exactly as the game's own update loop does.
@@ -50,9 +49,7 @@ assert(a:Playable());local x=a:Engine().x;a:Input('left',true);assert(a:Engine()
 a:Action('back');assert(a:Engine().paused);a:Action('primary');assert(not a:Engine().paused)
 a:Action('back');a:Action('back');assert(not scene.shown);assert(not a.keys.left)
 a:Solo();reveal();assert(a:Playable());a.soloEngine.over=true;a:Action('primary');assert(not a.soloEngine.over)
-a:Challenge('@other');reveal();assert(a.match.state=='inviting');SCENE_MANAGER:Hide('pbtGame');assert(a.match.state=='aborted')
-a.match:Reset('@other',333,42,true,'playing');a.match.engine=PBT.Engine.New(42,true);SCENE_MANAGER:Show('pbtGame');a:Action('back');assert(a.match.terminal==2)
-print('PASS runtime wiring: solo, pause, resume, restart, input cleanup, challenge cancellation and surrender')
+print('PASS runtime wiring: solo, pause, resume, restart, input cleanup')
 a:Solo(false,true);reveal();assert(a.soloEngine.force20G and a.soloEngine:Grounded());a.soloEngine.score=123;a:Save();assert(a.saved.highScore20G==123)
 a.soloEngine.over=true;a:Action('primary');assert(a.soloEngine.force20G and a.soloEngine:Grounded())
 a:Solo(false,false);assert(not a.soloEngine.force20G and not a.soloEngine:Grounded())
@@ -109,22 +106,3 @@ a.ui:Fade(function() end)
 for _=1,20 do a.ui:Tick(.1) end
 assert(a.ui.curtain.hidden,'a scene that never reports itself shown cannot leave the screen black')
 print('PASS fade: the screen darkens before the board, waits for it, and combat can call it off')
-
--- Duel layout: the player's own half on the left, the opponent's on the right.
-a:Solo(true);reveal();a.ui:Refresh()
-local soloBoard=a.ui.cells[1][1].x
-assert(a.ui.record.hidden==false and a.ui.gaugeFrame.hidden,'solo keeps its record and has no opponent half')
-a.solo=false;a.match:Reset('@other',7,42,true,'playing');a.match.engine=PBT.Engine.New(42,true)
-a.match.peerHeight=11;a.ui:Refresh()
-assert(a.ui.cells[1][1].x<soloBoard,'the board moves off centre for a duel')
-for y=1,20 do for x=1,10 do assert(a.ui.cells[y][x].x+30<=550,'every cell of the board is in the left half') end end
-for _,index in ipairs({1,2,3,4}) do
- for _,c in ipairs(a.ui.minis[index]) do assert(c.x+27<=550,'the hold and next panels are in the left half too') end
-end
-assert(a.ui.gaugeFrame.hidden==false and a.ui.peerLabel.hidden==false,'the opponent gets the right half')
-assert(a.ui.gauge.hidden==false and a.ui.gauge.h==math.floor(600*11/22),'the gauge stands at the height that was reported')
-assert(a.ui.gauge.x>=550,'and it stands on the right')
-a.match.peerHeight=0;a.ui:Refresh();assert(a.ui.gauge.hidden,'an empty board has nothing to show')
-a.solo=true;a.ui:Refresh()
-assert(a.ui.cells[1][1].x==soloBoard and a.ui.gaugeFrame.hidden,'going back to solo puts the board back')
-print('PASS duel layout: own half on the left, opponent half on the right, restored for solo')
