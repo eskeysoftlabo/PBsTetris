@@ -168,21 +168,60 @@ test('second match resets final transmission lifetime',function() start();player
 test('old invite cannot replace finished match',function() start();local invite=players.A:Packet(1);players.A:Quit();flush();players.B:Receive('A',invite);equal(players.B.state,'result') end)
 test('simultaneous invites converge',function() network();players.A:Invite('B');players.B:Invite('A');flush();equal(players.A.state,'inviting');equal(players.B.state,'invited');players.B:Accept();flush();advance(13);equal(players.A.state,'playing');equal(players.B.state,'playing') end)
 -- Contracts for the game's actual menu table, including coexistence with another PX child.
-ZO_GamepadEntryData={New=function(_,name,icon) return {SetIconTintOnSelection=function() end,SetIconDisabledTintOnSelection=function() end,SetEnabled=function() end} end}
+ZO_GamepadEntryData={New=function(_,name,icon) return {name=name,icon=icon,SetIconTintOnSelection=function() end,SetIconDisabledTintOnSelection=function() end,SetEnabled=function() end} end}
+-- A double for the client's gamepad list screen, enough for a subclass to build, fill and read
+-- its list the way the real one would.
+do
+ local Screen={}
+ Screen.__index=Screen
+ function Screen:Subclass() local c=setmetatable({},{__index=self});c.__index=c;return c end
+ function Screen:New(...) local o=setmetatable({},self);o:Initialize(...);return o end
+ function Screen:Initialize(control,_,_,scene)
+  self.control=control;self.scene=scene;self.header={}
+  local entries,target={},1
+  self.list={Clear=function() entries={} end,AddEntry=function(_,template,data) entries[#entries+1]={template=template,data=data} end,
+   Commit=function() end,GetTargetData=function() return entries[target] and entries[target].data end,
+   Entries=function() return entries end,Select=function(_,i) target=i end}
+  self:InitializeKeybindStripDescriptors()
+ end
+ function Screen:GetMainList() return self.list end
+ ZO_Gamepad_ParametricList_Screen=Screen
+end
+ZO_Scene={New=function(_,name) return {name=name,AddFragment=function() end,AddFragmentGroup=function() end} end}
+ZO_SimpleSceneFragment={New=function() return {} end};FRAGMENT_GROUP={GAMEPAD_DRIVEN_UI_WINDOW={},FRAME_TARGET_GAMEPAD={}}
+ZO_GamepadGenericHeader_Refresh=function(header,data) header.title=data.titleText end
+KEYBIND_STRIP={GetDefaultGamepadBackButtonDescriptor=function() return {keybind='UI_SHORTCUT_NEGATIVE'} end}
+GetString=function(id) return tostring(id) end
+dofile('PBsTetris/ModeMenu.lua')
 dofile('PBsTetris/Menu.lua')
-test('PX sits between help and options with idempotent children',function()
+test('PX sits between help and options, with one Tetris entry that opens the next level',function()
  ZO_MENU_ENTRIES={{id=1,data={name='ヘルプ',scene='helpRootGamepad'}},{id=2,data={name='設定',scene='gamepad_options_root'}},{id=3,data={name='ログアウト'}}}
- local launched,forced=0,nil;local app={Solo=function(_,restart,force) launched=launched+1;forced=force end}
- PBT.EnsureMenu(app);PBT.EnsureMenu(app)
+ PBT.EnsureMenu({});PBT.EnsureMenu({})
  equal(#ZO_MENU_ENTRIES,4);equal(ZO_MENU_ENTRIES[4].id,3)
  equal(ZO_MENU_ENTRIES[1].data.name,'ヘルプ');equal(ZO_MENU_ENTRIES[2].data.name,'ゲームセンターPX');equal(ZO_MENU_ENTRIES[3].data.name,'設定')
- equal(#ZO_MENU_ENTRIES[2].subMenu,2)
- ZO_MENU_ENTRIES[2].subMenu[1].data.activatedCallback();equal(launched,1);equal(forced,false)
- ZO_MENU_ENTRIES[2].subMenu[2].data.activatedCallback();equal(forced,true)
+ local px=ZO_MENU_ENTRIES[2]
+ equal(#px.subMenu,1);equal(#px.data.subMenu,1)
+ equal(px.subMenu[1].data.name,'タムリエル de テトリス')
+ equal(px.subMenu[1].data.scene,PBT.ModeMenu.SCENE)
+ equal(px.subMenu[1].data.activatedCallback,nil)
 end)
 test('existing PX games retained',function()
  ZO_MENU_ENTRIES={{id=2,data={scene='gamepad_options_root'}},{id='other',data={name='ゲームセンターPX',subMenu={{name='別のゲーム'}}},subMenu={{id='othergame',data={name='別のゲーム'}}}}}
- PBT.EnsureMenu({});equal(#ZO_MENU_ENTRIES,2);equal(#ZO_MENU_ENTRIES[2].subMenu,3)
+ PBT.EnsureMenu({});equal(#ZO_MENU_ENTRIES,2);equal(#ZO_MENU_ENTRIES[2].subMenu,2)
+ equal(ZO_MENU_ENTRIES[2].subMenu[1].id,'othergame')
+end)
+test('the third level offers normal then 20G, and each starts its own game',function()
+ local launched={}
+ local menu=PBT.ModeMenu:New({},{Solo=function(_,restart,force) launched[#launched+1]={restart=restart,force=force} end})
+ equal(menu.scene.name,PBT.ModeMenu.SCENE);equal(menu.header.title,'タムリエル de テトリス')
+ menu:PerformUpdate();menu:PerformUpdate()
+ local entries=menu:GetMainList():Entries()
+ equal(#entries,2)
+ equal(entries[1].data.name,'タムリエル de テトリス（ノーマル）');equal(entries[2].data.name,'タムリエル de テトリス（20G）')
+ menu:GetMainList():Select(1);menu:Launch()
+ menu:GetMainList():Select(2);menu.keybindStripDescriptor[2].callback()
+ equal(#launched,2);equal(launched[1].force,false);equal(launched[2].force,true);equal(launched[1].restart,false)
+ equal(menu.keybindStripDescriptor[1].keybind,'UI_SHORTCUT_NEGATIVE')
 end)
 local function stubLibrary(fail)
  LibGroupBroadcast={RegisterHandler=function()
